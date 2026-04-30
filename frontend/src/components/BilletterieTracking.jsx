@@ -15,6 +15,8 @@ import { getCse, saveCse, undoCse } from '../store/eventStore'
 import { useEdition } from '../context/EditionContext'
 import { useEventContext } from '../context/EventContext'
 import { CHANNEL_TYPES } from '../lib/models'
+import BilletterieComposition from './BilletterieComposition'
+import TendanceHoraire from './TendanceHoraire'
 
 const API = 'http://localhost:8001'
 
@@ -712,6 +714,18 @@ export default function BilletterieTracking() {
             )}
           </div>
         </SectionCard>
+      )}
+
+      {/* KPIs avancés — composition zones + jauge + comportement */}
+      {data?.kpis_avances && (
+        <BilletterieComposition kpisAvances={data.kpis_avances} />
+      )}
+
+      {/* Tendance horaire */}
+      {data?.kpis_avances?.tendance_horaire && (
+        <div className="p-4 rounded-2xl" style={{ background: '#0D1526', border: '1px solid #1A2840' }}>
+          <TendanceHoraire data={data.kpis_avances.tendance_horaire} />
+        </div>
       )}
 
       {/* Historique des imports */}
