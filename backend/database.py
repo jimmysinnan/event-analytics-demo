@@ -1,0 +1,485 @@
+"""
+database.py — SQLite persistant via sqlite3 (built-in Python, zéro dépendance)
+
+Tables :
+  imports          — historique de chaque fichier importé + résultats parsés
+  billetterie_live — snapshots du tableau de bord Suivi live (billetterie 2026)
+
+Architecture prévue pour migrer vers PostgreSQL/Supabase :
+  Toutes les requêtes passent par get_db() → remplacer sqlite3 par psycopg2/asyncpg
+  sans toucher au reste du code.
+"""
+
+import sqlite3
+import json
+import uuid
+from datetime import datetime
+from pathlib import Path
+from contextlib import contextmanager
+
+# Chemin du fichier SQLite — à côté du backend
+DB_PATH = Path(__file__).parent / "data.db"
+
+
+# ── Connexion ──────────────────────────────────────────────────────────────────
+
+@contextmanager
+def get_db():
+    """Context manager : connexion + commit automatique + fermeture."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row      # résultats comme dict
+    conn.execute("PRAGMA journal_mode=WAL")   # meilleure concurrence
+    conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+# ── Initialisation des tables ──────────────────────────────────────────────────
+
+def init_db():
+    """Crée les tables si elles n'existent pas. Appelé au démarrage du serveur."""
+    with get_db() as conn:
+        conn.executescript("""
+
+        -- Historique des imports de fichiers
+        CREATE TABLE IF NOT EXISTS imports (
+            id              TEXT PRIMARY KEY,
+            edition_id      TEXT NOT NULL,
+            source          TEXT NOT NULL,      -- weezevent, bizouk, eventbrite…
+            source_label    TEXT,
+            filename        TEXT NOT NULL,
+            imported_at     TEXT NOT NULL,      -- ISO 8601
+            nb_rows         INTEGER,            -- lignes dans le fichier source
+            nb_commandes    INTEGER,
+            nb_participants INTEGER,
+            ca_total        REAL,
+            nb_tarifs       INTEGER,
+            top_tarifs      TEXT,               -- JSON array
+            ventes_par_mois TEXT,               -- JSON array
+            canaux          TEXT,               -- JSON object
+            raw_json        TEXT,               -- résultat complet du parser
+            dedup_mode      TEXT,               -- 'full' | 'incremental' | 'first'
+            new_rows        INTEGER,            -- lignes réellement ajoutées (après dédup)
+            status          TEXT DEFAULT 'active'  -- active | rolled_back
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_imports_edition ON imports(edition_id);
+        CREATE INDEX IF NOT EXISTS idx_imports_status  ON imports(status);
+
+        -- Données billetterie agrégées par édition (état courant après dédup)
+        CREATE TABLE IF NOT EXISTS billetterie_state (
+            edition_id      TEXT PRIMARY KEY,
+            nb_commandes    INTEGER DEFAULT 0,
+            nb_participants INTEGER DEFAULT 0,
+            ca_total        REAL    DEFAULT 0,
+            top_tarifs      TEXT,               -- JSON
+            ventes_par_mois TEXT,               -- JSON
+            canaux          TEXT,               -- JSON
+            order_ids       TEXT,               -- JSON array — pour dédup
+            updated_at      TEXT
+        );
+
+        -- Snapshots du dashboard Suivi Live (billetterie à venir)
+        CREATE TABLE IF NOT EXISTS billetterie_live (
+            id                  TEXT PRIMARY KEY,
+            edition_id          TEXT NOT NULL,
+            snapshot_at         TEXT NOT NULL,
+            label               TEXT,           -- "Mise à jour #3", etc.
+            nb_commandes_total  INTEGER,
+            nb_participants_total INTEGER,
+            ca_total            REAL,
+            nb_tarifs           INTEGER,
+            top_tarifs          TEXT,           -- JSON
+            ventes_par_mois     TEXT,           -- JSON
+            source_breakdown    TEXT,           -- JSON { weezevent: x, bizouk: y }
+            cse_vendus          INTEGER DEFAULT 0,
+            cse_montant         REAL    DEFAULT 0,
+            notes               TEXT,
+            status              TEXT DEFAULT 'active'
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_live_edition ON billetterie_live(edition_id);
+
+        CREATE TABLE IF NOT EXISTS channels (
+            id          TEXT PRIMARY KEY,
+            edition_id  TEXT NOT NULL,
+            name        TEXT NOT NULL,
+            type        TEXT NOT NULL,
+            color       TEXT,
+            active      INTEGER DEFAULT 1,
+            created_at  TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_channels_edition ON channels(edition_id);
+
+        """)
+
+    try:
+        with get_db() as conn:
+            conn.execute("ALTER TABLE imports ADD COLUMN channel_id TEXT")
+    except Exception:
+        pass  # Column already exists
+
+
+# ── IMPORTS ────────────────────────────────────────────────────────────────────
+
+def save_import(edition_id: str, parsed: dict, dedup_result: dict) -> str:
+    """
+    Enregistre un import en base.
+    Retourne l'id de l'import créé.
+    """
+    import_id = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+
+    with get_db() as conn:
+        conn.execute("""
+            INSERT INTO imports
+              (id, edition_id, source, source_label, filename, imported_at,
+               nb_rows, nb_commandes, nb_participants, ca_total, nb_tarifs,
+               top_tarifs, ventes_par_mois, canaux, raw_json,
+               dedup_mode, new_rows)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            import_id,
+            edition_id,
+            parsed.get('source_detected', 'generic'),
+            parsed.get('source_label', ''),
+            parsed.get('meta', {}).get('file', 'unknown'),
+            now,
+            parsed.get('meta', {}).get('rows', 0),
+            parsed.get('nb_commandes', 0),
+            parsed.get('nb_participants', 0),
+            parsed.get('ca_total'),
+            parsed.get('nb_tarifs', 0),
+            json.dumps(parsed.get('top_tarifs', []), ensure_ascii=False),
+            json.dumps(parsed.get('ventes_par_mois', []), ensure_ascii=False),
+            json.dumps(parsed.get('canaux', {}), ensure_ascii=False),
+            json.dumps(parsed, ensure_ascii=False),
+            dedup_result.get('mode', 'first'),
+            dedup_result.get('new_rows', parsed.get('nb_commandes', 0)),
+        ))
+
+    return import_id
+
+
+def get_imports(edition_id: str) -> list:
+    """Retourne l'historique des imports d'une édition, du plus récent au plus ancien."""
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT id, source, source_label, filename, imported_at,
+                   nb_commandes, nb_participants, ca_total, nb_tarifs,
+                   dedup_mode, new_rows, status
+            FROM imports
+            WHERE edition_id = ? AND status != 'rolled_back'
+            ORDER BY imported_at DESC
+        """, (edition_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def rollback_import(import_id: str, edition_id: str) -> bool:
+    """Marque un import comme rolled_back et recalcule l'état courant."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE imports SET status = 'rolled_back' WHERE id = ?",
+            (import_id,)
+        )
+    _rebuild_state(edition_id)
+    return True
+
+
+def _rebuild_state(edition_id: str):
+    """Recalcule l'état agrégé billetterie après un rollback."""
+    with get_db() as conn:
+        active = conn.execute("""
+            SELECT raw_json FROM imports
+            WHERE edition_id = ? AND status = 'active'
+            ORDER BY imported_at ASC
+        """, (edition_id,)).fetchall()
+
+    # Reconstruire depuis zéro en réappliquant tous les imports actifs dans l'ordre
+    state = _empty_state(edition_id)
+    for row in active:
+        parsed = json.loads(row['raw_json'])
+        state = _merge_state(state, parsed, mode='full')
+    _save_state(edition_id, state)
+
+
+# ── ÉTAT COURANT (agrégat) ─────────────────────────────────────────────────────
+
+def get_state(edition_id: str) -> dict:
+    """Retourne l'état courant agrégé pour une édition."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM billetterie_state WHERE edition_id = ?",
+            (edition_id,)
+        ).fetchone()
+    if not row:
+        return _empty_state(edition_id)
+    d = dict(row)
+    for key in ('top_tarifs', 'ventes_par_mois', 'canaux', 'order_ids'):
+        if d.get(key):
+            try:
+                d[key] = json.loads(d[key])
+            except Exception:
+                d[key] = [] if key != 'canaux' else {}
+    return d
+
+
+def _empty_state(edition_id: str) -> dict:
+    return {
+        'edition_id': edition_id,
+        'nb_commandes': 0, 'nb_participants': 0, 'ca_total': 0.0,
+        'top_tarifs': [], 'ventes_par_mois': [], 'canaux': {},
+        'order_ids': [],
+    }
+
+
+def _save_state(edition_id: str, state: dict):
+    with get_db() as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO billetterie_state
+              (edition_id, nb_commandes, nb_participants, ca_total,
+               top_tarifs, ventes_par_mois, canaux, order_ids, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?)
+        """, (
+            edition_id,
+            state['nb_commandes'],
+            state['nb_participants'],
+            state['ca_total'],
+            json.dumps(state.get('top_tarifs', []), ensure_ascii=False),
+            json.dumps(state.get('ventes_par_mois', []), ensure_ascii=False),
+            json.dumps(state.get('canaux', {}), ensure_ascii=False),
+            json.dumps(state.get('order_ids', []), ensure_ascii=False),
+            datetime.utcnow().isoformat(),
+        ))
+
+
+def _merge_state(state: dict, parsed: dict, mode: str) -> dict:
+    """Fusionne un résultat parsé dans l'état courant (sans doublons)."""
+    state['nb_commandes']    += parsed.get('nb_commandes', 0)
+    state['nb_participants'] += parsed.get('nb_participants', 0)
+    ca = parsed.get('ca_total')
+    if ca:
+        state['ca_total'] = (state['ca_total'] or 0) + ca
+
+    # Fusionner top_tarifs
+    existing_tarifs = {t['tarif']: t for t in state.get('top_tarifs', [])}
+    for t in parsed.get('top_tarifs', []):
+        k = t['tarif']
+        if k in existing_tarifs:
+            existing_tarifs[k]['nb'] += t['nb']
+        else:
+            existing_tarifs[k] = dict(t)
+    total = sum(t['nb'] for t in existing_tarifs.values()) or 1
+    state['top_tarifs'] = sorted(
+        [{'tarif': k, 'nb': v['nb'], 'pct': round(v['nb'] / total * 100, 1)}
+         for k, v in existing_tarifs.items()],
+        key=lambda x: -x['nb']
+    )[:12]
+
+    # Fusionner courbe mensuelle
+    monthly = {m['mois']: m['nb'] for m in state.get('ventes_par_mois', [])}
+    for m in parsed.get('ventes_par_mois', []):
+        monthly[m['mois']] = monthly.get(m['mois'], 0) + m['nb']
+    state['ventes_par_mois'] = sorted(
+        [{'mois': k, 'nb': v} for k, v in monthly.items()],
+        key=lambda x: x['mois']
+    )
+
+    # Fusionner canaux
+    for k, v in parsed.get('canaux', {}).items():
+        state['canaux'][k] = state['canaux'].get(k, 0) + v
+
+    return state
+
+
+# ── DÉDUPLICATION ──────────────────────────────────────────────────────────────
+
+def dedup_import(edition_id: str, parsed: dict) -> dict:
+    """
+    Déduplication exacte par IDs de commandes.
+
+    Algorithme :
+      1. Récupère les IDs déjà en base pour cette édition
+      2. Compare avec les IDs du fichier importé
+      3. Filtre parsed pour ne conserver que les nouvelles lignes
+      4. Met à jour l'état agrégé avec uniquement les nouvelles données
+
+    Modes :
+      'first'       — premier import, aucun ID en base
+      'incremental' — tous les IDs sont nouveaux
+      'partial'     — mix de nouveaux et d'existants (fichier cumulatif)
+      'duplicate'   — tous les IDs existent déjà, rien à ajouter
+
+    Si les parsers n'ont pas pu extraire d'IDs (colonne absente),
+    fallback sur le comportement 'first' / 'incremental' sans dédup.
+    """
+    state = get_state(edition_id)
+
+    incoming_ids = set(parsed.get('order_ids', []))
+    existing_ids = set(state.get('order_ids', []))
+
+    # ── Cas sans IDs (parser n'a pas trouvé de colonne ID) ───────────────────
+    if not incoming_ids:
+        if state['nb_commandes'] == 0:
+            new_state = _merge_state(_empty_state(edition_id), parsed, 'first')
+            _save_state(edition_id, new_state)
+            return {'mode': 'first', 'new_rows': parsed.get('nb_commandes', 0),
+                    'duplicate_rows': 0, 'new_ids': [], 'id_based': False}
+        else:
+            new_state = _merge_state(state, parsed, 'incremental')
+            _save_state(edition_id, new_state)
+            return {'mode': 'incremental', 'new_rows': parsed.get('nb_commandes', 0),
+                    'duplicate_rows': 0, 'new_ids': [], 'id_based': False}
+
+    # ── Déduplication exacte par IDs ─────────────────────────────────────────
+    new_ids  = incoming_ids - existing_ids
+    dup_ids  = incoming_ids & existing_ids
+    nb_new   = len(new_ids)
+    nb_dup   = len(dup_ids)
+    nb_total = len(incoming_ids)
+
+    # Déterminer le mode
+    if not existing_ids:
+        mode = 'first'
+    elif nb_dup == 0:
+        mode = 'incremental'
+    elif nb_new == 0:
+        mode = 'duplicate'
+    else:
+        mode = 'partial'
+
+    # Si rien de nouveau → ne pas modifier l'état
+    if nb_new == 0:
+        return {'mode': mode, 'new_rows': 0, 'duplicate_rows': nb_dup,
+                'new_ids': [], 'id_based': True}
+
+    # Calculer la proportion des nouvelles lignes pour ajuster les KPIs
+    ratio = nb_new / nb_total if nb_total > 0 else 1.0
+
+    delta_parsed = {
+        **parsed,
+        'nb_commandes':    nb_new,
+        'nb_participants': round(parsed.get('nb_participants', nb_new) * ratio),
+        'ca_total':        round((parsed.get('ca_total') or 0) * ratio, 2),
+        'order_ids':       list(new_ids),
+        # top_tarifs et ventes_par_mois : on laisse le merge gérer
+    }
+
+    if mode == 'first':
+        new_state = _merge_state(_empty_state(edition_id), delta_parsed, mode)
+    else:
+        new_state = _merge_state(state, delta_parsed, mode)
+
+    # Mettre à jour la liste d'IDs cumulée
+    new_state['order_ids'] = list(existing_ids | new_ids)
+    _save_state(edition_id, new_state)
+
+    return {
+        'mode':          mode,
+        'new_rows':      nb_new,
+        'duplicate_rows': nb_dup,
+        'new_ids':       list(new_ids)[:20],   # échantillon pour debug
+        'id_based':      True,
+    }
+
+
+# ── BILLETTERIE LIVE SNAPSHOTS ─────────────────────────────────────────────────
+
+def save_live_snapshot(edition_id: str, snapshot: dict) -> str:
+    """Sauvegarde un snapshot du dashboard Suivi Live."""
+    snap_id = str(uuid.uuid4())
+    now     = datetime.utcnow().isoformat()
+
+    with get_db() as conn:
+        # Numéro du snapshot
+        count = conn.execute(
+            "SELECT COUNT(*) FROM billetterie_live WHERE edition_id = ?",
+            (edition_id,)
+        ).fetchone()[0]
+        label = snapshot.get('label') or f"Mise à jour #{count + 1}"
+
+        conn.execute("""
+            INSERT INTO billetterie_live
+              (id, edition_id, snapshot_at, label,
+               nb_commandes_total, nb_participants_total, ca_total, nb_tarifs,
+               top_tarifs, ventes_par_mois, source_breakdown,
+               cse_vendus, cse_montant, notes)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            snap_id, edition_id, now, label,
+            snapshot.get('nb_commandes'), snapshot.get('nb_participants'),
+            snapshot.get('ca_total'), snapshot.get('nb_tarifs'),
+            json.dumps(snapshot.get('top_tarifs', []), ensure_ascii=False),
+            json.dumps(snapshot.get('ventes_par_mois', []), ensure_ascii=False),
+            json.dumps(snapshot.get('source_breakdown', {}), ensure_ascii=False),
+            snapshot.get('cse_vendus', 0),
+            snapshot.get('cse_montant', 0),
+            snapshot.get('notes', ''),
+        ))
+    return snap_id
+
+
+def get_live_snapshots(edition_id: str) -> list:
+    """Retourne les snapshots live d'une édition, du plus récent au plus ancien."""
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT id, snapshot_at, label, nb_commandes_total, nb_participants_total,
+                   ca_total, nb_tarifs, cse_vendus, cse_montant, notes, status
+            FROM billetterie_live
+            WHERE edition_id = ? AND status = 'active'
+            ORDER BY snapshot_at DESC
+        """, (edition_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def rollback_live_snapshot(snap_id: str):
+    """Archive un snapshot (retour arrière)."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE billetterie_live SET status = 'rolled_back' WHERE id = ?",
+            (snap_id,)
+        )
+
+
+# ── Channels ───────────────────────────────────────────────────────────────────
+
+def save_channel(channel: dict) -> dict:
+    with get_db() as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO channels
+              (id, edition_id, name, type, color, active, created_at)
+            VALUES (?,?,?,?,?,?,?)
+        """, (
+            channel['id'],
+            channel['edition_id'],
+            channel['name'],
+            channel['type'],
+            channel.get('color'),
+            int(channel.get('active', True)),
+            channel.get('created_at', datetime.utcnow().isoformat()),
+        ))
+    return channel
+
+
+def get_channels(edition_id: str) -> list:
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM channels WHERE edition_id = ? AND active = 1 ORDER BY created_at",
+            (edition_id,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_channel(channel_id: str):
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE channels SET active = 0 WHERE id = ?",
+            (channel_id,)
+        )
