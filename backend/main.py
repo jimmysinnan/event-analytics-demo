@@ -18,7 +18,7 @@ from services.import_parser import parse_import, detect_source, SOURCE_LABELS
 from services.file_reader import read_file, SUPPORTED_EXTENSIONS
 from database import (
     init_db, save_import, get_imports, rollback_import,
-    get_state, dedup_import,
+    get_state, dedup_import, get_db,
     save_live_snapshot, get_live_snapshots, rollback_live_snapshot,
     save_channel, get_channels, delete_channel
 )
@@ -452,6 +452,37 @@ def rollback_snapshot(snap_id: str):
     """Archive un snapshot (retour arrière)."""
     rollback_live_snapshot(snap_id)
     return {"ok": True}
+
+
+# ── Rapport billetterie ────────────────────────────────────────────────────────
+
+@app.get("/api/report/{edition_id}")
+def download_report(edition_id: str, edition_name: str = "Édition"):
+    """Génère et télécharge un rapport texte pour une édition."""
+    from services.report_generator import export_report_bytes
+
+    state = get_state(edition_id)
+
+    # Récupérer les kpis_avances depuis le dernier import actif
+    kpis = None
+    with get_db() as conn:
+        row = conn.execute("""
+            SELECT raw_json FROM imports
+            WHERE edition_id = ? AND status = 'active'
+            ORDER BY imported_at DESC LIMIT 1
+        """, (edition_id,)).fetchone()
+    if row:
+        raw = json.loads(row['raw_json'])
+        kpis = raw.get('kpis_avances')
+
+    report_bytes = export_report_bytes(kpis or {}, edition_name, state)
+    safe_name = edition_name.replace(' ', '_').replace('/', '-')
+
+    return Response(
+        content=report_bytes,
+        media_type='text/plain; charset=utf-8',
+        headers={'Content-Disposition': f'attachment; filename="rapport_{safe_name}.txt"'}
+    )
 
 
 @app.get("/api/pdf/list")
