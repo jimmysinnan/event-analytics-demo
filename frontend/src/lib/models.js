@@ -89,6 +89,7 @@ export function createEdition(data = {}) {
   }
 }
 
+// ── Canaux & Thème ───────────────────────────────────────────────────────────────
 // ── Canaux de distribution ─────────────────────────────────────────────────────
 export const CHANNEL_TYPES = [
   { id: 'weezevent',  label: 'Weezevent',              icon: '🎫' },
@@ -115,6 +116,7 @@ export function createChannel(data = {}) {
 // ── Thème visuel d'un événement ────────────────────────────────────────────────
 export function createEventTheme(data = {}) {
   return {
+    editionId:    data.editionId    ?? null,
     imageUrl:     data.imageUrl     ?? null,
     primary:      data.primary      ?? '#6366F1',
     secondary:    data.secondary    ?? '#F59E0B',
@@ -129,7 +131,7 @@ export function createEventTheme(data = {}) {
 // ── Paramètres par édition ─────────────────────────────────────────────────────
 // Default VIP keywords — user can customize per edition
 export const DEFAULT_VIP_KEYWORDS = [
-  'vip', 'premium', 'palmeraie', 'prestige', 'gold', 'platine', 'ultra',
+  'vip', 'premium', 'prestige', 'gold', 'platine', 'ultra',
   'carré or', 'golden', 'diamond', 'loge', 'tribune',
 ]
 
@@ -138,11 +140,11 @@ export function createEditionSettings(data = {}) {
     editionId:   data.editionId   ?? null,
     vipKeywords: data.vipKeywords ?? [...DEFAULT_VIP_KEYWORDS],
     invitKeywords: data.invitKeywords ?? [
-      'invitation', 'invit', 'invite', 'gratuit', 'offert', 'compl',
+      'invitation', 'invit', 'invite', 'gratuit', 'offert', 'complémentaire', 'complimentary',
       'press', 'artiste', 'staff', 'accréditation',
     ],
     // Mapping tarif → zone custom: { 'PASS WEEK-END LAGOON': 'fosse', 'PALMERAIE VIP': 'vip' }
     tarifZoneMap: data.tarifZoneMap ?? {},
-    updatedAt:   data.updatedAt   ?? new Date().toISOString(),
+    createdAt:   data.createdAt   ?? new Date().toISOString(),
   }
 }
