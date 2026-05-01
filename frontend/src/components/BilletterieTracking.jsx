@@ -274,10 +274,12 @@ function CseBlock({ editionId }) {
   )
 }
 
-// ── Historique des imports ────────────────────────────────────────────────────
-function ImportHistory({ editionId, onRollback }) {
-  const [imports, setImports] = useState([])
-  const [loading, setLoading] = useState(false)
+// ── Historique des imports — avec aperçu au clic ─────────────────────────────
+function ImportHistory({ editionId, onRollback, onSelectImport }) {
+  const [imports,     setImports]     = useState([])
+  const [loading,     setLoading]     = useState(false)
+  const [expandedId,  setExpandedId]  = useState(null)
+  const [detailData,  setDetailData]  = useState({})   // { importId: parsedData }
 
   useEffect(() => {
     if (!editionId) return
@@ -292,58 +294,138 @@ function ImportHistory({ editionId, onRollback }) {
   const DEDUP_LABELS = {
     first:       { label: '1er import', color: '#10B981' },
     incremental: { label: 'Incrémental', color: '#068EEA' },
+    partial:     { label: 'Partiel', color: '#F59E0B' },
+    duplicate:   { label: 'Déjà importé', color: '#8B9BB4' },
     cumulative:  { label: 'Cumulatif (dédup)', color: '#F59E0B' },
   }
 
+  async function handleExpand(imp) {
+    const id = imp.id
+    if (expandedId === id) { setExpandedId(null); return }
+    setExpandedId(id)
+    if (detailData[id]) { onSelectImport?.(detailData[id]); return }
+    try {
+      const detail = await fetch(`${API}/api/import/${id}/detail`).then(r => r.json())
+      setDetailData(d => ({ ...d, [id]: detail }))
+      onSelectImport?.(detail)
+    } catch {/* backend offline */ }
+  }
+
   async function handleRollback(importId) {
-    if (!confirm('Annuler cet import ? L\'état sera recalculé.')) return
+    if (!confirm("Annuler cet import ? L'état sera recalculé.")) return
     setLoading(true)
     try {
       await fetch(`${API}/api/imports/${importId}/rollback?edition_id=${editionId}`, { method: 'DELETE' })
       onRollback?.()
       const fresh = await fetch(`${API}/api/imports/${editionId}`).then(r => r.json())
       setImports(fresh)
-    } finally {
-      setLoading(false)
-    }
+      setExpandedId(null)
+    } finally { setLoading(false) }
   }
 
   return (
-    <SectionCard title="Historique des imports" subtitle={`${imports.length} import${imports.length > 1 ? 's' : ''} enregistré${imports.length > 1 ? 's' : ''}`}>
+    <SectionCard
+      title="Historique des imports"
+      subtitle={`${imports.length} import${imports.length > 1 ? 's' : ''} — cliquer pour afficher`}>
       <div className="space-y-2">
         {imports.map((imp, i) => {
-          const dedup = DEDUP_LABELS[imp.dedup_mode] ?? DEDUP_LABELS.first
+          const dedup    = DEDUP_LABELS[imp.dedup_mode] ?? DEDUP_LABELS.first
+          const expanded = expandedId === imp.id
+          const detail   = detailData[imp.id]
+
           return (
-            <div key={imp.id} className="flex items-center justify-between p-3 rounded-xl"
-              style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid #1A2840' }}>
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-1.5 h-8 rounded-full flex-shrink-0" style={{ background: dedup.color }} />
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-white truncate">{imp.filename}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-2xs px-1.5 py-0.5 rounded font-medium"
-                      style={{ background: `${dedup.color}18`, color: dedup.color }}>
-                      {dedup.label}
-                    </span>
-                    <span className="text-2xs" style={{ color: '#4A5568' }}>
-                      {imp.new_rows} cmd · {new Date(imp.imported_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                    </span>
+            <div key={imp.id} className="rounded-xl overflow-hidden"
+              style={{ border: `1px solid ${expanded ? 'rgba(6,142,234,0.3)' : '#1A2840'}` }}>
+
+              {/* Ligne résumé — cliquable */}
+              <button
+                onClick={() => handleExpand(imp)}
+                className="w-full flex items-center justify-between p-3 text-left transition hover:bg-[#111D33]"
+                style={{ background: expanded ? 'rgba(6,142,234,0.05)' : 'rgba(255,255,255,0.02)' }}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-1.5 h-8 rounded-full flex-shrink-0" style={{ background: dedup.color }} />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-white truncate">{imp.filename}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-2xs px-1.5 py-0.5 rounded font-medium"
+                        style={{ background: `${dedup.color}18`, color: dedup.color }}>
+                        {dedup.label}
+                      </span>
+                      <span className="text-2xs" style={{ color: '#4A5568' }}>
+                        {imp.new_rows} cmd · {fmt.number(imp.nb_participants ?? 0)} participants · {new Date(imp.imported_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-3 flex-shrink-0 ml-2">
-                <span className="num text-xs font-bold" style={{ color: '#F59E0B' }}>
-                  {imp.ca_total ? new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', notation: 'compact' }).format(imp.ca_total) : '—'}
-                </span>
-                {i === 0 && (
-                  <button onClick={() => handleRollback(imp.id)} disabled={loading}
-                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition hover:bg-[#111D33]"
-                    style={{ border: '1px solid #1A2840', color: '#8B9BB4' }}
-                    title="Annuler cet import">
-                    <Undo2 size={11} strokeWidth={1.8} />
-                  </button>
-                )}
-              </div>
+                <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                  <span className="num text-xs font-bold" style={{ color: '#F59E0B' }}>
+                    {imp.ca_total
+                      ? new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', notation: 'compact' }).format(imp.ca_total)
+                      : '—'}
+                  </span>
+                  <span style={{ color: expanded ? '#21AAFA' : '#4A5568', fontSize: '0.75rem' }}>
+                    {expanded ? '▲' : '▼'}
+                  </span>
+                  {i === 0 && (
+                    <button
+                      onClick={e => { e.stopPropagation(); handleRollback(imp.id) }}
+                      disabled={loading}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition hover:bg-[#1A2840]"
+                      style={{ border: '1px solid #1A2840', color: '#8B9BB4' }}
+                      title="Annuler cet import">
+                      <Undo2 size={11} strokeWidth={1.8} />
+                    </button>
+                  )}
+                </div>
+              </button>
+
+              {/* Détail déroulant */}
+              {expanded && (
+                <div className="px-3 pb-3 pt-0 space-y-3 animate-slide-up"
+                  style={{ borderTop: '1px solid #1A2840' }}>
+                  {detail ? (
+                    <>
+                      {/* KPIs résumé */}
+                      <div className="grid grid-cols-3 gap-2 pt-3">
+                        {[
+                          { label: 'Commandes', val: fmt.number(detail.nb_commandes ?? 0), color: '#06B6D4' },
+                          { label: 'Participants', val: fmt.number(detail.nb_participants ?? 0), color: '#068EEA' },
+                          { label: 'CA', val: detail.ca_total ? fmt.currency(detail.ca_total) : '—', color: '#F59E0B' },
+                        ].map(({ label, val, color }) => (
+                          <div key={label} className="text-center p-2 rounded-lg"
+                            style={{ background: '#0D1526' }}>
+                            <p className="text-2xs" style={{ color: '#4A5568', fontSize: '0.575rem' }}>{label}</p>
+                            <p className="num text-sm font-bold mt-0.5" style={{ color }}>{val}</p>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Top tarifs */}
+                      {detail.top_tarifs?.length > 0 && (
+                        <div>
+                          <p className="text-2xs font-semibold uppercase tracking-wider mb-1.5"
+                            style={{ color: '#4A5568', fontSize: '0.575rem' }}>Top formules</p>
+                          {detail.top_tarifs.slice(0, 4).map(({ tarif, nb, pct }) => (
+                            <div key={tarif} className="mb-1">
+                              <div className="flex justify-between text-xs mb-0.5">
+                                <span className="truncate pr-2" style={{ color: '#8B9BB4' }}>{tarif}</span>
+                                <span className="num flex-shrink-0" style={{ color: '#F0F4FF' }}>{fmt.number(nb)}</span>
+                              </div>
+                              <div className="h-1 rounded-full" style={{ background: '#1A2840' }}>
+                                <div className="h-full rounded-full" style={{ width: `${pct}%`, background: '#068EEA' }} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="pt-3 flex items-center gap-2 text-xs" style={{ color: '#4A5568' }}>
+                      <RefreshCw size={12} className="animate-spin" />
+                      Chargement…
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )
         })}
@@ -627,23 +709,32 @@ export default function BilletterieTracking() {
           <p className="text-xs font-semibold text-[#21AAFA] uppercase tracking-wider mb-3">
             Vue consolidée {savedState ? '(données sauvegardées)' : 'import + CSE'}
           </p>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-4 gap-3">
             <div>
-              <p className="text-2xs text-[#8B9BB4]">Total billets émis</p>
-              <p className="num text-2xl font-bold text-white mt-0.5">{fmt.number(totalParticipants)}</p>
+              <p className="text-2xs text-[#8B9BB4]">Commandes</p>
+              <p className="num text-xl font-bold text-white mt-0.5">
+                {fmt.number(activeData?.nb_commandes ?? 0)}
+              </p>
+              <p className="text-2xs text-[#4A5568] mt-0.5">uniques</p>
+            </div>
+            <div>
+              <p className="text-2xs text-[#8B9BB4]">Participants</p>
+              <p className="num text-xl font-bold text-white mt-0.5">
+                {fmt.number(totalParticipants)}
+              </p>
               <p className="text-2xs text-[#4A5568] mt-0.5">
-                Import {fmt.number(activeData?.nb_participants ?? 0)} + CSE {fmt.number(cse.vendus)}
+                {fmt.number(activeData?.nb_participants ?? 0)} + {fmt.number(cse.vendus)} CSE
               </p>
             </div>
             <div>
-              <p className="text-2xs text-[#8B9BB4]">CA total estimé</p>
-              <p className="num text-2xl font-bold text-[#F59E0B] mt-0.5">{fmt.currency(totalCA)}</p>
-              <p className="text-2xs text-[#4A5568] mt-0.5">Import + CSE cumulés</p>
+              <p className="text-2xs text-[#8B9BB4]">CA total</p>
+              <p className="num text-xl font-bold text-[#F59E0B] mt-0.5">{fmt.currency(totalCA)}</p>
+              <p className="text-2xs text-[#4A5568] mt-0.5">import + CSE</p>
             </div>
             <div>
-              <p className="text-2xs text-[#8B9BB4]">Progression objectif {fmt.number(objectifTotal)}</p>
-              <p className="num text-2xl font-bold text-[#10B981] mt-0.5">{pctObjectif}%</p>
-              <div className="mt-1 h-2 rounded-full" style={{ background: '#1A2840' }}>
+              <p className="text-2xs text-[#8B9BB4]">Objectif {fmt.number(objectifTotal)}</p>
+              <p className="num text-xl font-bold text-[#10B981] mt-0.5">{pctObjectif}%</p>
+              <div className="mt-1 h-1.5 rounded-full" style={{ background: '#1A2840' }}>
                 <div className="h-full rounded-full" style={{ width: `${Math.min(100, pctObjectif)}%`, background: '#10B981' }} />
               </div>
             </div>
@@ -757,8 +848,17 @@ export default function BilletterieTracking() {
         </div>
       )}
 
-      {/* Historique des imports */}
-      <ImportHistory editionId={editionId} onRollback={() => { setHistKey(k => k + 1); setData(null) }} />
+      {/* Historique des imports — clic affiche le dashboard de l'import */}
+      <ImportHistory
+        editionId={editionId}
+        onRollback={() => { setHistKey(k => k + 1); setData(null) }}
+        onSelectImport={detail => {
+          // Charger les données de l'import sélectionné dans le dashboard
+          setData(detail)
+          setStatus('success')
+          setFile({ name: detail.filename })
+        }}
+      />
 
       {/* CSE — persisté par édition */}
       <CseBlock editionId={editionId} />

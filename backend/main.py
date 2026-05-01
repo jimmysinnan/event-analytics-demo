@@ -424,6 +424,25 @@ def current_state(edition_id: str):
     return jsonify(get_state(edition_id))
 
 
+@app.get("/api/import/{import_id}/detail")
+def get_import_detail(import_id: str):
+    """Retourne le résultat complet (raw_json) d'un import spécifique."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT raw_json, source_label, filename, imported_at FROM imports WHERE id = ?",
+            (import_id,)
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "Import introuvable")
+    parsed = json.loads(row['raw_json'])
+    return jsonify({
+        **parsed,
+        'source_label': row['source_label'],
+        'filename':     row['filename'],
+        'imported_at':  row['imported_at'],
+    })
+
+
 @app.delete("/api/imports/{import_id}/rollback")
 def rollback(import_id: str, edition_id: str):
     """Annule un import et recalcule l'état courant."""
