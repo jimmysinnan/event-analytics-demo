@@ -1,0 +1,101 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    margin: 0;
+    background: #05080F;
+    color: #F0F4FF;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  #root { width: 100%; min-height: 100vh; }
+
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #1A2840; border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #4A5568; }
+
+  ::selection { background: rgba(6,142,234,0.2); color: #21AAFA; }
+}
+
+@layer components {
+  .card {
+    background: #0D1526;
+    border: 1px solid #1A2840;
+    border-radius: 1rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  .card-hover {
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .card-hover:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5), 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06);
+    border-color: #111D33;
+    transform: translateY(-1px);
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 0.75rem;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #8B9BB4;
+    transition: all 0.15s ease;
+    cursor: pointer;
+    user-select: none;
+    border: 1px solid transparent;
+  }
+  .nav-item:hover {
+    background: #111D33;
+    color: #F0F4FF;
+  }
+  .nav-item-active {
+    background: rgba(6,142,234,0.1);
+    color: #21AAFA;
+    border-color: rgba(6,142,234,0.2);
+  }
+  .badge-up      { background: rgba(16,185,129,0.15); color: #10B981; }
+  .badge-down    { background: rgba(239,68,68,0.15);  color: #EF4444; }
+  .badge-neutral { background: rgba(74,85,104,0.2);   color: #8B9BB4; }
+  .badge-gold    { background: rgba(245,158,11,0.15); color: #F59E0B; }
+  .badge-blue    { background: rgba(6,142,234,0.15);  color: #21AAFA; }
+
+  .divider { border-top: 1px solid #1A2840; }
+
+  .recharts-default-tooltip {
+    background: #111D33 !important;
+    border: 1px solid #1A2840 !important;
+    border-radius: 0.75rem !important;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4) !important;
+  }
+  .recharts-tooltip-label {
+    color: #8B9BB4 !important;
+    font-size: 0.75rem !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    margin-bottom: 4px !important;
+  }
+  .recharts-tooltip-item { color: #F0F4FF !important; font-size: 0.875rem !important; }
+}
+
+@layer utilities {
+  .num { font-variant-numeric: tabular-nums; }
+  .ease-spring { transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1); }
+  .text-2xs { font-size: 0.625rem; line-height: 0.875rem; }
+}

@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Event Analytics — Pilotez votre événement par la data</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,600&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --terracotta:   #C85C3C;
+  --terra-dark:   #A8431F;
+  --terra-light:  #D97452;
+  --beige:        #F0E6D3;
+  --beige-dark:   #E5D5BC;
+  --cream:        #FAF5EE;
+  --blue-night:   #1A2B5F;
+  --blue-mid:     #2B4C8A;
+  --blue-light:   #4A72C0;
+  --black:        #1A1410;
+  --white:        #FFFFFF;
+  --sand:         #D4C4A8;
+  --font-display: 'Cormorant Garamond', Georgia, serif;
+  --font-body:    'DM Sans', system-ui, sans-serif;
+}
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  font-family: var(--font-body);
+  background: var(--cream);
+  color: var(--black);
+  overflow-x: hidden;
+}
+
+/* ── NAVIGATION ─────────────────────────────────────────────── */
+nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(250,245,238,0.92); backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--beige-dark);
+  padding: 0 5%;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 68px;
+}
+.nav-logo {
+  display: flex; align-items: center; gap: 10px;
+  text-decoration: none;
+}
+.nav-logo-icon {
+  width: 36px; height: 36px; border-radius: 9px;
+  background: linear-gradient(135deg, var(--terracotta), var(--terra-dark));
+  display: flex; align-items: center; justify-content: center;
+}
+.nav-logo-icon svg { width: 18px; height: 18px; }
+.nav-logo-text {
+  font-family: var(--font-display);
+  font-size: 20px; font-weight: 700; color: var(--blue-night);
+  letter-spacing: 0.02em;
+}
+.nav-logo-text span { color: var(--terracotta); }
+.nav-links {
+  display: flex; align-items: center; gap: 32px; list-style: none;
+}
+.nav-links a {
+  font-family: var(--font-body); font-size: 14px; font-weight: 500;
+  color: var(--blue-night); text-decoration: none; opacity: 0.75;
+  transition: opacity 0.2s;
+}
+.nav-links a:hover { opacity: 1; }
+.nav-cta {
+  background: var(--terracotta); color: var(--white) !important;
+  padding: 10px 24px; border-radius: 8px;
+  font-weight: 600 !important; opacity: 1 !important;
+  transition: background 0.2s !important;
+}
+.nav-cta:hover { background: var(--terra-dark) !important; }
+
+/* ── HERO ───────────────────────────────────────────────────── */
+.hero {
+  min-height: 100vh;
+  background: var(--blue-night);
+  position: relative; overflow: hidden;
+  display: flex; align-items: center;
+  padding: 120px 5% 80px;
+}
+.hero-grain {
+  position: absolute; inset: 0; z-index: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  opacity: 0.4;
+}
+.hero-glow {
+  position: absolute;
+  width: 800px; height: 800px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(200,92,60,0.2) 0%, transparent 65%);
+  top: -200px; right: -100px; z-index: 0;
+}
+.hero-glow2 {
+  position: absolute;
+  width: 600px; height: 600px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(74,114,192,0.15) 0%, transparent 65%);
+  bottom: -150px; left: 0; z-index: 0;
+}
+.hero-inner {
+  position: relative; z-index: 1;
+  max-width: 1200px; margin: 0 auto; width: 100%;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center;
+}
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(200,92,60,0.2); border: 1px solid rgba(200,92,60,0.4);
+  color: var(--terra-light); padding: 6px 16px; border-radius: 99px;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; margin-bottom: 24px;
+}
+.hero-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--terra-light); }
+.hero-h1 {
+  font-family: var(--font-display);
+  font-size: clamp(48px, 5vw, 72px);
+  font-weight: 600; line-height: 1.05;
+  color: var(--white); letter-spacing: -0.02em;
+  margin-bottom: 24px;
+}
+.hero-h1 em { color: var(--terra-light); font-style: italic; }
+.hero-h1 strong { color: var(--beige); font-weight: 700; }
+.hero-sub {
+  font-size: 18px; font-weight: 300; color: rgba(240,230,211,0.75);
+  line-height: 1.65; margin-bottom: 40px; max-width: 480px;
+}
+.hero-actions { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.btn-primary {
+  background: var(--terracotta);
+  color: var(--white); padding: 14px 32px; border-radius: 10px;
+  font-family: var(--font-body); font-size: 15px; font-weight: 600;
+  text-decoration: none; border: none; cursor: pointer;
+  transition: background 0.2s, transform 0.15s;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.btn-primary:hover { background: var(--terra-dark); transform: translateY(-1px); }
+.btn-ghost {
+  color: var(--beige); padding: 14px 28px; border-radius: 10px;
+  font-family: var(--font-body); font-size: 15px; font-weight: 500;
+  text-decoration: none; border: 1px solid rgba(240,230,211,0.25);
+  transition: border-color 0.2s, background 0.2s;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.btn-ghost:hover { border-color: rgba(240,230,211,0.5); background: rgba(240,230,211,0.06); }
+.hero-kpis {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px;
+  margin-top: 48px; border-radius: 12px; overflow: hidden; border: 1px solid rgba(240,230,211,0.1);
+}
+.hero-kpi {
+  background: rgba(240,230,211,0.05); padding: 20px;
+  text-align: center; border-right: 1px solid rgba(240,230,211,0.08);
+}
+.hero-kpi:last-child { border-right: none; }
+.hero-kpi-val { font-family: var(--font-display); font-size: 28px; font-weight: 700; color: var(--white); }
+.hero-kpi-lbl { font-size: 11px; color: rgba(240,230,211,0.5); margin-top: 4px; letter-spacing: 0.06em; text-transform: uppercase; }
+
+/* Dashboard mockup */
+.hero-mockup {
+  background: #05080F; border: 1px solid #1A2840;
+  border-radius: 16px; overflow: hidden;
+  box-shadow: 0 40px 120px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
+  transform: perspective(1000px) rotateY(-4deg) rotateX(2deg);
+}
+.mockup-topbar {
+  background: #080E1E; border-bottom: 1px solid #1A2840;
+  padding: 12px 18px; display: flex; align-items: center; gap: 8px;
+}
+.mockup-dot { width: 10px; height: 10px; border-radius: 50%; }
+.mockup-title {
+  flex: 1; text-align: center; font-size: 11px;
+  color: #8B9BB4; font-family: monospace;
+}
+.mockup-body { padding: 20px; }
+.mockup-kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
+.mockup-card {
+  background: #0D1526; border: 1px solid #1A2840;
+  border-radius: 10px; padding: 12px 14px;
+}
+.mockup-card-label { font-size: 8px; color: #8B9BB4; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
+.mockup-card-val { font-size: 18px; font-weight: 700; color: #F0F4FF; font-family: monospace; }
+.mockup-bar-section { background: #0D1526; border: 1px solid #1A2840; border-radius: 10px; padding: 12px 14px; }
+.mockup-bar-title { font-size: 9px; color: #8B9BB4; margin-bottom: 10px; }
+.mockup-bars { display: flex; gap: 8px; align-items: flex-end; height: 60px; }
+.mockup-bar {
+  flex: 1; border-radius: 3px 3px 0 0;
+  animation: barGrow 1s ease-out forwards;
+}
+@keyframes barGrow { from { transform: scaleY(0); transform-origin: bottom; } to { transform: scaleY(1); } }
+
+/* ── STRIP MARQUEE ──────────────────────────────────────────── */
+.marquee-strip {
+  background: var(--terracotta); overflow: hidden;
+  padding: 14px 0; white-space: nowrap;
+}
+.marquee-inner {
+  display: inline-flex; gap: 48px;
+  animation: marquee 25s linear infinite;
+}
+.marquee-inner span {
+  font-family: var(--font-display); font-size: 18px;
+  font-weight: 600; color: var(--white); letter-spacing: 0.05em;
+  opacity: 0.9;
+}
+.marquee-inner span::before { content: '✦'; margin-right: 48px; font-size: 12px; opacity: 0.6; }
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+/* ── SECTIONS COMMUNES ──────────────────────────────────────── */
+section { padding: 100px 5%; }
+.container { max-width: 1200px; margin: 0 auto; }
+.section-label {
+  font-family: var(--font-body); font-size: 11px; font-weight: 700;
+  letter-spacing: 0.15em; text-transform: uppercase;
+  color: var(--terracotta); margin-bottom: 16px;
+  display: flex; align-items: center; gap: 10px;
+}
+.section-label::before { content: ''; width: 20px; height: 2px; background: var(--terracotta); border-radius: 1px; }
+.section-h2 {
+  font-family: var(--font-display);
+  font-size: clamp(36px, 4vw, 56px);
+  font-weight: 600; letter-spacing: -0.02em;
+  line-height: 1.1; color: var(--blue-night);
+  margin-bottom: 20px;
+}
+.section-h2 em { color: var(--terracotta); font-style: italic; }
+.section-sub {
+  font-size: 17px; font-weight: 300; color: #5A4A3A;
+  line-height: 1.7; max-width: 580px;
+}
+
+/* ── PROBLÈME ───────────────────────────────────────────────── */
+.problem-section { background: var(--beige); }
+.problem-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center;
+  margin-top: 60px;
+}
+.problem-list { list-style: none; display: flex; flex-direction: column; gap: 16px; }
+.problem-item {
+  display: flex; align-items: flex-start; gap: 16px;
+  padding: 18px 22px; background: var(--cream);
+  border: 1px solid var(--beige-dark); border-radius: 12px;
+}
+.problem-icon {
+  width: 36px; height: 36px; border-radius: 9px; flex-shrink: 0;
+  background: rgba(200,92,60,0.12); display: flex;
+  align-items: center; justify-content: center; font-size: 16px;
+}
+.problem-item p { font-size: 14px; color: #5A4A3A; line-height: 1.6; }
+.problem-item strong { color: var(--black); }
+.problem-visual {
+  position: relative; display: flex; flex-direction: column; gap: 12px;
+}
+.file-chip {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--cream); border: 1px solid var(--beige-dark);
+  border-radius: 10px; padding: 10px 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  font-size: 13px; color: #5A4A3A; font-family: monospace;
+}
+.file-chip:nth-child(2) { transform: translateX(20px); }
+.file-chip:nth-child(4) { transform: translateX(40px); }
+.problem-arrow {
+  text-align: center; font-size: 32px; color: var(--sand); margin: 8px 0;
+}
+.solution-chip {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--blue-night); border-radius: 12px; padding: 16px 20px;
+  box-shadow: 0 8px 32px rgba(26,43,95,0.25);
+}
+.solution-chip p { color: var(--white); font-size: 14px; font-weight: 500; }
+.solution-chip span { color: var(--terra-light); font-size: 11px; margin-top: 2px; display: block; }
+
+/* ── TYPES D'ÉVÉNEMENTS ─────────────────────────────────────── */
+.events-section { background: var(--cream); }
+.events-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px;
+  border-radius: 16px; overflow: hidden; margin-top: 52px;
+  box-shadow: 0 4px 32px rgba(0,0,0,0.08);
+}
+.event-card {
+  padding: 40px 32px; position: relative; overflow: hidden;
+  transition: transform 0.3s;
+}
+.event-card:hover { transform: scale(1.01); z-index: 1; }
+.event-card:nth-child(odd)  { background: var(--blue-night); }
+.event-card:nth-child(even) { background: var(--terracotta); }
+.event-icon { font-size: 36px; margin-bottom: 16px; }
+.event-title {
+  font-family: var(--font-display); font-size: 26px; font-weight: 600;
+  color: var(--white); letter-spacing: -0.01em; margin-bottom: 10px;
+}
+.event-desc { font-size: 14px; color: rgba(255,255,255,0.65); line-height: 1.65; }
+.event-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
+.event-tag {
+  padding: 4px 10px; border-radius: 99px; font-size: 11px; font-weight: 500;
+  background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.8);
+  border: 1px solid rgba(255,255,255,0.15);
+}
+
+/* ── MODULES ────────────────────────────────────────────────── */
+.modules-section { background: var(--beige); }
+.modules-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 52px;
+}
+.module-card {
+  background: var(--cream); border: 1px solid var(--beige-dark);
+  border-radius: 16px; padding: 28px; position: relative; overflow: hidden;
+  transition: box-shadow 0.3s, transform 0.3s;
+}
+.module-card:hover {
+  box-shadow: 0 12px 40px rgba(0,0,0,0.08);
+  transform: translateY(-3px);
+}
+.module-accent {
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+}
+.module-icon {
+  width: 44px; height: 44px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; margin-bottom: 16px;
+}
+.module-title {
+  font-family: var(--font-display); font-size: 22px; font-weight: 600;
+  color: var(--blue-night); letter-spacing: -0.01em; margin-bottom: 8px;
+}
+.module-desc { font-size: 14px; color: #5A4A3A; line-height: 1.65; }
+.module-features { list-style: none; margin-top: 16px; display: flex; flex-direction: column; gap: 6px; }
+.module-features li {
+  font-size: 12px; color: #7A6A5A;
+  display: flex; align-items: center; gap: 6px;
+}
+.module-features li::before { content: '→'; color: var(--terracotta); font-weight: 600; }
+
+/* ── STATS PROOF ────────────────────────────────────────────── */
+.proof-section { background: var(--blue-night); }
+.proof-label { color: var(--terra-light) !important; }
+.proof-label::before { background: var(--terra-light) !important; }
+.proof-h2 { color: var(--white) !important; }
+.proof-sub { color: rgba(240,230,211,0.6) !important; }
+.proof-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-top: 56px;
+}
+.proof-stat {
+  padding: 28px 24px; text-align: center;
+  border: 1px solid rgba(240,230,211,0.1); border-radius: 14px;
+  background: rgba(240,230,211,0.04);
+  transition: border-color 0.3s;
+}
+.proof-stat:hover { border-color: rgba(200,92,60,0.3); }
+.proof-val {
+  font-family: var(--font-display); font-size: 40px; font-weight: 700;
+  color: var(--white); letter-spacing: -0.02em; display: block;
+}
+.proof-val span { color: var(--terra-light); }
+.proof-lbl { font-size: 12px; color: rgba(240,230,211,0.5); margin-top: 8px; letter-spacing: 0.06em; text-transform: uppercase; }
+.proof-divider { border-top: 1px solid rgba(240,230,211,0.08); margin-top: 56px; padding-top: 40px; }
+.proof-quote {
+  font-family: var(--font-display); font-size: 28px; font-style: italic;
+  font-weight: 400; color: var(--beige); text-align: center;
+  max-width: 800px; margin: 0 auto; line-height: 1.5;
+}
+.proof-quote cite {
+  display: block; margin-top: 16px; font-style: normal;
+  font-family: var(--font-body); font-size: 13px;
+  color: rgba(240,230,211,0.45); letter-spacing: 0.05em; text-transform: uppercase;
+}
+
+/* ── COMMENT ÇA MARCHE ──────────────────────────────────────── */
+.how-section { background: var(--cream); }
+.how-steps {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; margin-top: 60px;
+  position: relative;
+}
+.how-steps::before {
+  content: '';
+  position: absolute; top: 30px; left: calc(16.666% + 20px); right: calc(16.666% + 20px);
+  height: 1px; background: linear-gradient(90deg, var(--terracotta), var(--blue-light));
+  z-index: 0;
+}
+.how-step { text-align: center; position: relative; z-index: 1; }
+.how-num {
+  width: 60px; height: 60px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 24px;
+  font-family: var(--font-display); font-size: 24px; font-weight: 700;
+  color: var(--white); position: relative;
+}
+.how-num-1 { background: var(--terracotta); }
+.how-num-2 { background: var(--blue-night); }
+.how-num-3 { background: linear-gradient(135deg, var(--terracotta), var(--blue-night)); }
+.how-title {
+  font-family: var(--font-display); font-size: 22px; font-weight: 600;
+  color: var(--blue-night); margin-bottom: 10px;
+}
+.how-desc { font-size: 14px; color: #5A4A3A; line-height: 1.7; }
+
+/* ── VIDEO SECTION ──────────────────────────────────────────── */
+.video-section { background: var(--beige); }
+.video-container {
+  margin-top: 52px;
+  background: var(--blue-night);
+  border-radius: 20px; overflow: hidden;
+  aspect-ratio: 16/9; position: relative;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 40px 80px rgba(0,0,0,0.15);
+}
+.video-placeholder {
+  text-align: center; padding: 60px;
+}
+.play-btn {
+  width: 80px; height: 80px; border-radius: 50%;
+  background: var(--terracotta);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 24px; cursor: pointer;
+  box-shadow: 0 0 40px rgba(200,92,60,0.5);
+  transition: transform 0.2s, box-shadow 0.2s;
+  border: none;
+}
+.play-btn:hover { transform: scale(1.08); box-shadow: 0 0 60px rgba(200,92,60,0.6); }
+.play-btn svg { margin-left: 4px; }
+.video-placeholder p { color: rgba(240,230,211,0.6); font-size: 15px; }
+.video-placeholder strong { color: var(--white); }
+.video-note {
+  margin-top: 20px; text-align: center;
+  font-size: 13px; color: #7A6A5A;
+}
+
+/* ── CTA FINAL ──────────────────────────────────────────────── */
+.cta-section {
+  background: linear-gradient(135deg, var(--terracotta) 0%, #A8431F 100%);
+  text-align: center; padding: 120px 5%;
+  position: relative; overflow: hidden;
+}
+.cta-section::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23fff' fill-opacity='0.04'%3E%3Ccircle cx='30' cy='30' r='1'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+.cta-section > * { position: relative; z-index: 1; }
+.cta-h2 {
+  font-family: var(--font-display); font-size: clamp(40px, 5vw, 64px);
+  font-weight: 600; color: var(--white); letter-spacing: -0.02em;
+  line-height: 1.1; margin-bottom: 20px;
+}
+.cta-sub {
+  font-size: 18px; color: rgba(255,255,255,0.75); margin-bottom: 40px;
+  font-weight: 300; max-width: 500px; margin-left: auto; margin-right: auto;
+}
+.cta-actions { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+.btn-white {
+  background: var(--white); color: var(--terracotta);
+  padding: 16px 40px; border-radius: 10px;
+  font-family: var(--font-body); font-size: 16px; font-weight: 700;
+  text-decoration: none; transition: transform 0.2s;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.btn-white:hover { transform: translateY(-2px); }
+.btn-outline-white {
+  color: var(--white); padding: 16px 36px; border-radius: 10px;
+  font-family: var(--font-body); font-size: 16px; font-weight: 500;
+  text-decoration: none; border: 1px solid rgba(255,255,255,0.4);
+  transition: background 0.2s;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.btn-outline-white:hover { background: rgba(255,255,255,0.1); }
+.cta-types {
+  margin-top: 40px; display: flex; gap: 16px; justify-content: center;
+  flex-wrap: wrap;
+}
+.cta-type {
+  padding: 6px 14px; border-radius: 99px; font-size: 12px; font-weight: 500;
+  background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.8);
+  border: 1px solid rgba(255,255,255,0.2);
+}
+
+/* ── MODAL FORMSPREE ────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 999;
+  background: rgba(26,43,95,0.75); backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px; opacity: 0; pointer-events: none;
+  transition: opacity 0.25s;
+}
+.modal-overlay.open { opacity: 1; pointer-events: all; }
+.modal-box {
+  background: var(--cream); border-radius: 20px;
+  padding: 48px 44px; max-width: 500px; width: 100%;
+  position: relative; transform: translateY(20px);
+  transition: transform 0.3s;
+  box-shadow: 0 40px 80px rgba(0,0,0,0.3);
+}
+.modal-overlay.open .modal-box { transform: translateY(0); }
+.modal-close {
+  position: absolute; top: 16px; right: 16px;
+  background: none; border: none; cursor: pointer;
+  color: var(--sand); font-size: 22px; line-height: 1;
+  padding: 4px 8px; border-radius: 6px;
+  transition: color 0.2s, background 0.2s;
+}
+.modal-close:hover { color: var(--black); background: var(--beige); }
+.modal-title {
+  font-family: var(--font-display); font-size: 32px; font-weight: 600;
+  color: var(--blue-night); letter-spacing: -0.02em; margin-bottom: 8px;
+}
+.modal-title em { color: var(--terracotta); font-style: italic; }
+.modal-sub { font-size: 14px; color: #7A6A5A; margin-bottom: 28px; line-height: 1.6; }
+.form-group { margin-bottom: 16px; }
+.form-label { display: block; font-size: 12px; font-weight: 600; color: var(--blue-night); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 6px; }
+.form-input, .form-select, .form-textarea {
+  width: 100%; padding: 12px 16px; border-radius: 10px;
+  border: 1.5px solid var(--beige-dark); background: var(--white);
+  font-family: var(--font-body); font-size: 14px; color: var(--black);
+  transition: border-color 0.2s, box-shadow 0.2s; outline: none;
+}
+.form-input:focus, .form-select:focus, .form-textarea:focus {
+  border-color: var(--terracotta);
+  box-shadow: 0 0 0 3px rgba(200,92,60,0.12);
+}
+.form-textarea { resize: vertical; min-height: 90px; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-submit {
+  width: 100%; padding: 14px; background: var(--terracotta); color: var(--white);
+  border: none; border-radius: 10px; font-family: var(--font-body);
+  font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 8px;
+  transition: background 0.2s, transform 0.15s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.form-submit:hover { background: var(--terra-dark); transform: translateY(-1px); }
+.form-note { font-size: 11px; color: #9A8A7A; text-align: center; margin-top: 12px; }
+.form-success {
+  text-align: center; padding: 32px 20px; display: none;
+}
+.form-success-icon { font-size: 48px; margin-bottom: 16px; }
+.form-success h3 { font-family: var(--font-display); font-size: 26px; color: var(--blue-night); margin-bottom: 8px; }
+.form-success p { font-size: 14px; color: #7A6A5A; }
+
+/* ── GROWTH SECTION ─────────────────────────────────────────── */
+.growth-section { background: var(--blue-night); padding: 100px 5%; }
+.growth-inner { max-width: 1200px; margin: 0 auto; }
+.growth-top { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; margin-bottom: 72px; }
+.growth-costs { display: flex; flex-direction: column; gap: 16px; }
+.cost-card {
+  display: flex; align-items: flex-start; gap: 16px;
+  padding: 20px 24px; border-radius: 14px;
+  background: rgba(200,92,60,0.1); border: 1px solid rgba(200,92,60,0.2);
+}
+.cost-card.positive {
+  background: rgba(16,185,129,0.08); border-color: rgba(16,185,129,0.2);
+}
+.cost-num {
+  font-family: var(--font-display); font-size: 40px; font-weight: 700;
+  line-height: 1; flex-shrink: 0;
+}
+.cost-card .cost-num { color: var(--terra-light); }
+.cost-card.positive .cost-num { color: #34D399; }
+.cost-label { font-size: 13px; font-weight: 600; color: var(--white); margin-bottom: 4px; }
+.cost-desc { font-size: 12px; color: rgba(240,230,211,0.5); line-height: 1.5; }
+.growth-right h2 {
+  font-family: var(--font-display); font-size: 48px; font-weight: 600;
+  color: var(--white); letter-spacing: -0.02em; line-height: 1.1; margin-bottom: 20px;
+}
+.growth-right h2 em { color: var(--terra-light); font-style: italic; }
+.growth-right p { font-size: 16px; color: rgba(240,230,211,0.65); line-height: 1.7; margin-bottom: 32px; }
+.growth-cta-box {
+  background: rgba(240,230,211,0.06); border: 1px solid rgba(240,230,211,0.12);
+  border-radius: 14px; padding: 20px 24px;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+}
+.growth-guarantee { display: flex; align-items: center; gap: 8px; color: rgba(240,230,211,0.6); font-size: 13px; }
+.growth-guarantee::before { content: '✓'; color: #34D399; font-weight: 700; }
+.comparison-table { width: 100%; border-collapse: collapse; }
+.comparison-table th {
+  padding: 14px 20px; font-size: 12px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+}
+.comparison-table th:first-child { text-align: left; color: rgba(240,230,211,0.4); width: 40%; }
+.comparison-table th.bad { color: var(--terra-light); background: rgba(200,92,60,0.1); border-radius: 8px 8px 0 0; }
+.comparison-table th.good { color: #34D399; background: rgba(16,185,129,0.1); border-radius: 8px 8px 0 0; }
+.comparison-table td {
+  padding: 12px 20px; font-size: 13px; border-bottom: 1px solid rgba(240,230,211,0.06);
+}
+.comparison-table td:first-child { color: rgba(240,230,211,0.5); }
+.comparison-table td.bad { color: var(--terra-light); background: rgba(200,92,60,0.05); }
+.comparison-table td.good { color: #34D399; background: rgba(16,185,129,0.05); font-weight: 600; }
+.urgency-bar {
+  margin-top: 40px; padding: 20px 28px; border-radius: 14px;
+  background: rgba(200,92,60,0.15); border: 1px solid rgba(200,92,60,0.3);
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+}
+.urgency-dot {
+  width: 10px; height: 10px; border-radius: 50%; background: var(--terra-light);
+  animation: pulse 2s infinite; flex-shrink: 0;
+}
+@keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.5; transform:scale(1.3); } }
+.urgency-text { color: var(--beige); font-size: 14px; font-weight: 500; }
+.urgency-text strong { color: var(--white); }
+
+/* ── VIDEO SECTION ──────────────────────────────────────────── */
+footer {
+  background: var(--black); padding: 48px 5%;
+  display: flex; justify-content: space-between; align-items: center;
+  flex-wrap: wrap; gap: 20px;
+}
+.footer-logo {
+  font-family: var(--font-display); font-size: 20px; font-weight: 700;
+  color: var(--white);
+}
+.footer-logo span { color: var(--terra-light); }
+.footer-copy { font-size: 13px; color: rgba(255,255,255,0.35); }
+.footer-links {
+  display: flex; gap: 24px; list-style: none;
+}
+.footer-links a { font-size: 13px; color: rgba(255,255,255,0.4); text-decoration: none; }
+
+/* ── ANIMATIONS ─────────────────────────────────────────────── */
+.reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.6s ease-out, transform 0.6s ease-out; }
+.reveal.visible { opacity: 1; transform: translateY(0); }
+.reveal-delay-1 { transition-delay: 0.1s; }
+.reveal-delay-2 { transition-delay: 0.2s; }
+.reveal-delay-3 { transition-delay: 0.3s; }
+.reveal-delay-4 { transition-delay: 0.4s; }
+.reveal-delay-5 { transition-delay: 0.5s; }
+
+@media (max-width: 900px) {
+  .hero-inner, .problem-grid { grid-template-columns: 1fr; gap: 40px; }
+  .modules-grid, .events-grid { grid-template-columns: 1fr; }
+  .how-steps { grid-template-columns: 1fr; }
+  .how-steps::before { display: none; }
+  .proof-grid { grid-template-columns: repeat(2, 1fr); }
+  .hero-mockup { display: none; }
+  .nav-links { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a href="#" class="nav-logo">
+    <div class="nav-logo-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+    </div>
+    <span class="nav-logo-text">Event <span>Analytics</span></span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#features">Modules</a></li>
+    <li><a href="#events">Secteurs</a></li>
+    <li><a href="#proof">Résultats</a></li>
+    <li><a href="#how">Fonctionnement</a></li>
+    <li><button onclick="openModal()" class="nav-cta" style="cursor:pointer;font-family:var(--font-body);font-size:14px;border:none;">Demander une démo</button></li>
+  </ul>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-grain"></div>
+  <div class="hero-glow"></div>
+  <div class="hero-glow2"></div>
+  <div class="hero-inner">
+    <div>
+      <div class="hero-badge">Plateforme Analytics Événementielle</div>
+      <h1 class="hero-h1">
+        Pilotez votre événement<br>
+        <em>comme une entreprise.</em>
+      </h1>
+      <p class="hero-sub">
+        Centralisez billetterie, consommation et rentabilité en un seul tableau de bord.
+        Décidez avec les chiffres, pas à l'instinct.
+      </p>
+      <div class="hero-actions">
+        <button onclick="openModal()" class="btn-primary" style="border:none;cursor:pointer;font-family:var(--font-body)">
+          Demander une démo gratuite
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+        <a href="#features" class="btn-ghost">Découvrir les modules</a>
+      </div>
+      <div class="hero-kpis">
+        <div class="hero-kpi">
+          <div class="hero-kpi-val">+800k€</div>
+          <div class="hero-kpi-lbl">CA analysé / édition</div>
+        </div>
+        <div class="hero-kpi">
+          <div class="hero-kpi-val">16k+</div>
+          <div class="hero-kpi-lbl">festivaliers suivis</div>
+        </div>
+        <div class="hero-kpi">
+          <div class="hero-kpi-val">6</div>
+          <div class="hero-kpi-lbl">modules intégrés</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dashboard mockup -->
+    <div class="hero-mockup">
+      <div class="mockup-topbar">
+        <div class="mockup-dot" style="background:#EF4444"></div>
+        <div class="mockup-dot" style="background:#F59E0B;margin-left:4px"></div>
+        <div class="mockup-dot" style="background:#10B981;margin-left:4px"></div>
+        <div class="mockup-title">event-analytics — Vue Globale</div>
+      </div>
+      <div class="mockup-body">
+        <div class="mockup-kpis">
+          <div class="mockup-card">
+            <div class="mockup-card-label">CA Consommation</div>
+            <div class="mockup-card-val" style="color:#21AAFA">496 585 €</div>
+          </div>
+          <div class="mockup-card">
+            <div class="mockup-card-label">Festivaliers</div>
+            <div class="mockup-card-val" style="color:#06B6D4">16 810</div>
+          </div>
+          <div class="mockup-card">
+            <div class="mockup-card-label">CA Billetterie</div>
+            <div class="mockup-card-val" style="color:#F59E0B">929 695 €</div>
+          </div>
+          <div class="mockup-card">
+            <div class="mockup-card-label">Panier moyen</div>
+            <div class="mockup-card-val" style="color:#8B5CF6">68,5 €</div>
+          </div>
+        </div>
+        <div class="mockup-bar-section">
+          <div class="mockup-bar-title">CA par édition — 2023 · 2024 · 2025</div>
+          <div class="mockup-bars">
+            <div class="mockup-bar" style="height:70%;background:#4A5568;animation-delay:0.1s"></div>
+            <div class="mockup-bar" style="height:57%;background:#068EEA;animation-delay:0.2s"></div>
+            <div class="mockup-bar" style="height:38%;background:#F59E0B;animation-delay:0.3s"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MARQUEE -->
+<div class="marquee-strip">
+  <div class="marquee-inner">
+    <span>Festival</span><span>Afterwork</span><span>Salon</span><span>Soirée Dansante</span>
+    <span>Escape Game</span><span>Concert</span><span>Conférence</span><span>Marché</span>
+    <span>Spectacle</span><span>Gala</span><span>Pop-up</span><span>Tournoi</span>
+    <span>Festival</span><span>Afterwork</span><span>Salon</span><span>Soirée Dansante</span>
+    <span>Escape Game</span><span>Concert</span><span>Conférence</span><span>Marché</span>
+    <span>Spectacle</span><span>Gala</span><span>Pop-up</span><span>Tournoi</span>
+  </div>
+</div>
+
+<!-- PROBLÈME -->
+<section class="problem-section">
+  <div class="container">
+    <div class="reveal">
+      <p class="section-label">Le problème</p>
+      <h2 class="section-h2">Vous gérez <em>dans le flou.</em></h2>
+      <p class="section-sub">Vos données sont dispersées entre des dizaines de fichiers, de tableurs et d'outils qui ne se parlent pas.</p>
+    </div>
+    <div class="problem-grid">
+      <ul class="problem-list">
+        <li class="problem-item reveal reveal-delay-1">
+          <div class="problem-icon">📊</div>
+          <p><strong>Excel partout.</strong> TDB billetterie, conso, staff, stocks — 5 fichiers pour une décision.</p>
+        </li>
+        <li class="problem-item reveal reveal-delay-2">
+          <div class="problem-icon">⏱</div>
+          <p><strong>Analyses manuelles.</strong> Des heures perdues à consolider, nettoyer, recalculer à chaque édition.</p>
+        </li>
+        <li class="problem-item reveal reveal-delay-3">
+          <div class="problem-icon">🔍</div>
+          <p><strong>Pas de vue consolidée.</strong> Impossible de croiser billetterie et consommation en temps réel.</p>
+        </li>
+        <li class="problem-item reveal reveal-delay-4">
+          <div class="problem-icon">📉</div>
+          <p><strong>Décisions à l'instinct.</strong> Sans données claires, les arbitrages terrain sont risqués.</p>
+        </li>
+      </ul>
+      <div class="problem-visual reveal reveal-delay-2">
+        <div class="file-chip">📈 TDB_Billetterie_2025.xlsx</div>
+        <div class="file-chip">📊 Conso_Weezpay_2024.xlsx</div>
+        <div class="file-chip">📋 Invitations_partners.xlsx</div>
+        <div class="file-chip">📁 StaffPerf_2025.xlsx</div>
+        <div class="problem-arrow">↓</div>
+        <div class="solution-chip">
+          <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#C85C3C,#A8431F);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </div>
+          <div>
+            <p>Event Analytics</p>
+            <span>Tout centralisé. Tout visualisé. Tout actionnable.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TYPES D'ÉVÉNEMENTS -->
+<section class="events-section" id="events">
+  <div class="container">
+    <div class="reveal">
+      <p class="section-label">Pour tous les secteurs</p>
+      <h2 class="section-h2">Un outil pour <em>chaque type</em> d'événement.</h2>
+      <p class="section-sub">La plateforme s'adapte à n'importe quel contexte événementiel — quelle que soit la taille, le secteur ou le format.</p>
+    </div>
+    <div class="events-grid">
+      <div class="event-card reveal">
+        <div class="event-icon">🎪</div>
+        <div class="event-title">Festivals & Concerts</div>
+        <p class="event-desc">Pilotage billetterie, consommation bar, stocks et profil festivalier sur plusieurs jours.</p>
+        <div class="event-tags"><span class="event-tag">Multi-jours</span><span class="event-tag">Cashless</span><span class="event-tag">Bars</span></div>
+      </div>
+      <div class="event-card reveal reveal-delay-1">
+        <div class="event-icon">🎤</div>
+        <div class="event-title">Afterworks & Soirées</div>
+        <p class="event-desc">Suivi en temps réel des ventes, segmentation des invités, mesure du ROI de vos événements récurrents.</p>
+        <div class="event-tags"><span class="event-tag">Récurrent</span><span class="event-tag">Réseau</span><span class="event-tag">ROI</span></div>
+      </div>
+      <div class="event-card reveal reveal-delay-2">
+        <div class="event-icon">🏛</div>
+        <div class="event-title">Salons & Conférences</div>
+        <p class="event-desc">Analyse des flux visiteurs, performance des stands, mesure de l'engagement par session.</p>
+        <div class="event-tags"><span class="event-tag">B2B</span><span class="event-tag">Visiteurs</span><span class="event-tag">Stands</span></div>
+      </div>
+      <div class="event-card reveal">
+        <div class="event-icon">🔐</div>
+        <div class="event-title">Escape Games & Loisirs</div>
+        <p class="event-desc">Taux d'occupation, panier moyen, fidélisation et analyse des préférences par profil client.</p>
+        <div class="event-tags"><span class="event-tag">Occupation</span><span class="event-tag">Fidélisation</span></div>
+      </div>
+      <div class="event-card reveal reveal-delay-1">
+        <div class="event-icon">🛍</div>
+        <div class="event-title">Pop-ups & Marchés</div>
+        <p class="event-desc">Comparaison des emplacements, best-sellers, heure de pic et prévisions pour la prochaine date.</p>
+        <div class="event-tags"><span class="event-tag">Retail</span><span class="event-tag">Emplacement</span><span class="event-tag">Prévision</span></div>
+      </div>
+      <div class="event-card reveal reveal-delay-2">
+        <div class="event-icon">🏆</div>
+        <div class="event-title">Sport & Tournois</div>
+        <p class="event-desc">Billetterie multi-formats, hospitality, reporting pour les partenaires et sponsors.</p>
+        <div class="event-tags"><span class="event-tag">Sponsors</span><span class="event-tag">VIP</span><span class="event-tag">Reporting</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MODULES -->
+<section class="modules-section" id="features">
+  <div class="container">
+    <div class="reveal">
+      <p class="section-label">6 modules intégrés</p>
+      <h2 class="section-h2">Tout ce dont vous avez besoin,<br><em>au même endroit.</em></h2>
+    </div>
+    <div class="modules-grid">
+      <div class="module-card reveal">
+        <div class="module-accent" style="background:linear-gradient(90deg,#068EEA,transparent)"></div>
+        <div class="module-icon" style="background:rgba(6,142,234,0.1)">📊</div>
+        <div class="module-title">Vue Globale</div>
+        <p class="module-desc">Synthèse exécutive de l'édition — KPIs clés, comparaison historique, tendances.</p>
+        <ul class="module-features">
+          <li>CA consommation + billetterie</li>
+          <li>Fréquentation et panier moyen</li>
+          <li>Comparatif multi-éditions</li>
+        </ul>
+      </div>
+      <div class="module-card reveal reveal-delay-1">
+        <div class="module-accent" style="background:linear-gradient(90deg,#F59E0B,transparent)"></div>
+        <div class="module-icon" style="background:rgba(245,158,11,0.1)">🎫</div>
+        <div class="module-title">Billetterie</div>
+        <p class="module-desc">Suivi des ventes en temps réel, analyse des canaux et monitoring de l'avance.</p>
+        <ul class="module-features">
+          <li>Rythme de vente par mois</li>
+          <li>Pass Culture, CSE, Ambassadeurs</li>
+          <li>Suivi 2026 live (upload CSV)</li>
+        </ul>
+      </div>
+      <div class="module-card reveal reveal-delay-2">
+        <div class="module-accent" style="background:linear-gradient(90deg,#06B6D4,transparent)"></div>
+        <div class="module-icon" style="background:rgba(6,182,212,0.1)">🛒</div>
+        <div class="module-title">Consommation</div>
+        <p class="module-desc">CA par point de vente, top produits, courbe horaire et comparaison historique.</p>
+        <ul class="module-features">
+          <li>CA par zone, heure, produit</li>
+          <li>Top articles par volume</li>
+          <li>Données 2023 · 2024 · 2025</li>
+        </ul>
+      </div>
+      <div class="module-card reveal">
+        <div class="module-accent" style="background:linear-gradient(90deg,#8B5CF6,transparent)"></div>
+        <div class="module-icon" style="background:rgba(139,92,246,0.1)">👤</div>
+        <div class="module-title">Profil Client</div>
+        <p class="module-desc">Démographie, comportement d'achat, heures chaudes et préférences par tranche d'âge.</p>
+        <ul class="module-features">
+          <li>Répartition âge et genre</li>
+          <li>Panier moyen par profil</li>
+          <li>Préférences de consommation</li>
+        </ul>
+      </div>
+      <div class="module-card reveal reveal-delay-1">
+        <div class="module-accent" style="background:linear-gradient(90deg,#EF4444,transparent)"></div>
+        <div class="module-icon" style="background:rgba(239,68,68,0.1)">🎁</div>
+        <div class="module-title">Invitations</div>
+        <p class="module-desc">Analyse de la rentabilité des invitations — valeur offerte vs CA généré réel.</p>
+        <ul class="module-features">
+          <li>Calcul du taux de retour réel</li>
+          <li>CA conso par invité</li>
+          <li>Analyse par partenaire</li>
+        </ul>
+      </div>
+      <div class="module-card reveal reveal-delay-2">
+        <div class="module-accent" style="background:linear-gradient(90deg,#10B981,transparent)"></div>
+        <div class="module-icon" style="background:rgba(16,185,129,0.1)">📦</div>
+        <div class="module-title">Stocks & Prévisions</div>
+        <p class="module-desc">Rotation par zone, pic horaire et prévisions automatiques pour l'édition suivante.</p>
+        <ul class="module-features">
+          <li>Prévisions par bar et produit</li>
+          <li>Pic de service identifié</li>
+          <li>Facteur de correction ajustable</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PROOF -->
+<section class="proof-section" id="proof">
+  <div class="container">
+    <div class="reveal">
+      <p class="section-label proof-label">Résultats mesurés</p>
+      <h2 class="section-h2 proof-h2">Des chiffres <em style="color:var(--terra-light)">réels.</em></h2>
+      <p class="section-sub proof-sub">Construit sur des données réelles extraites directement des exports Weezpay, Weezevent et Bizouk.</p>
+    </div>
+    <div class="proof-grid">
+      <div class="proof-stat reveal">
+        <span class="proof-val">496<span>k€</span></span>
+        <div class="proof-lbl">CA consommation analysé (2025)</div>
+      </div>
+      <div class="proof-stat reveal reveal-delay-1">
+        <span class="proof-val">16<span>k+</span></span>
+        <div class="proof-lbl">Festivaliers suivis en temps réel</div>
+      </div>
+      <div class="proof-stat reveal reveal-delay-2">
+        <span class="proof-val">91<span>k</span></span>
+        <div class="proof-lbl">Transactions analysées (2025)</div>
+      </div>
+      <div class="proof-stat reveal reveal-delay-3">
+        <span class="proof-val">3<span>ans</span></span>
+        <div class="proof-lbl">Historique exploitable (2023–2025)</div>
+      </div>
+    </div>
+    <div class="proof-divider reveal">
+      <p class="proof-quote">
+        "Pour la première fois, on a vu exactement ce que nous coûtaient nos invitations — et ce qu'elles rapportaient vraiment."
+        <cite>Direction Artistique — Festival Événementiel</cite>
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- COMMENT ÇA MARCHE -->
+<section class="how-section" id="how">
+  <div class="container">
+    <div class="reveal">
+      <p class="section-label">Simplicité</p>
+      <h2 class="section-h2">En 3 étapes,<br><em>vous êtes opérationnel.</em></h2>
+    </div>
+    <div class="how-steps">
+      <div class="how-step reveal">
+        <div class="how-num how-num-1">1</div>
+        <div class="how-title">Importez vos données</div>
+        <p class="how-desc">Glissez-déposez vos exports Weezpay, Weezevent ou votre fichier billetterie. Format .xlsx ou .csv. Pas de configuration requise.</p>
+      </div>
+      <div class="how-step reveal reveal-delay-2">
+        <div class="how-num how-num-2">2</div>
+        <div class="how-title">Le tableau se construit</div>
+        <p class="how-desc">Tous vos KPIs sont calculés automatiquement. CA, festivaliers, panier moyen, rentabilité des invitations — en quelques secondes.</p>
+      </div>
+      <div class="how-step reveal reveal-delay-4">
+        <div class="how-num how-num-3">3</div>
+        <div class="how-title">Décidez et exportez</div>
+        <p class="how-desc">Naviguez entre les 6 modules, comparez avec les éditions passées, exportez vos présentations PDF prêtes pour vos réunions.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- GROWTH SECTION -->
+<section class="growth-section" id="growth">
+  <div class="growth-inner">
+
+    <div class="growth-top">
+      <!-- Left — coûts -->
+      <div class="growth-costs">
+        <div class="cost-card reveal">
+          <div class="cost-num">3j</div>
+          <div>
+            <div class="cost-label">Perdus après chaque édition</div>
+            <div class="cost-desc">En moyenne, 2 à 3 jours de travail manuel pour consolider billetterie, conso et invitations après un festival.</div>
+          </div>
+        </div>
+        <div class="cost-card reveal reveal-delay-1">
+          <div class="cost-num">34%</div>
+          <div>
+            <div class="cost-label">De retour sur vos invitations</div>
+            <div class="cost-desc">Pour 1 € de billet offert, vos invités génèrent 0,34 € de consommation. Sans données, impossible de le savoir.</div>
+          </div>
+        </div>
+        <div class="cost-card reveal reveal-delay-2">
+          <div class="cost-num">-17%</div>
+          <div>
+            <div class="cost-label">De fréquentation en 1 an</div>
+            <div class="cost-desc">20 346 festivaliers en 2024, 16 810 en 2025. Une tendance identifiée trop tard sans comparatif historique.</div>
+          </div>
+        </div>
+        <div class="cost-card positive reveal reveal-delay-3">
+          <div class="cost-num">48h</div>
+          <div>
+            <div class="cost-label">Pour être opérationnel</div>
+            <div class="cost-desc">Importez vos fichiers, le dashboard se construit. Aucune configuration, aucun développement requis.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right — argument -->
+      <div class="growth-right reveal">
+        <p style="color:var(--terra-light);font-size:11px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;margin-bottom:16px;display:flex;align-items:center;gap:10px;">
+          <span style="width:20px;height:2px;background:var(--terra-light);border-radius:1px;display:inline-block"></span>
+          Vous perdez de l'argent sans le savoir
+        </p>
+        <h2>Sans données claires,<br><em>vous décidez à l'instinct.</em></h2>
+        <p>Chaque édition, des centaines de milliers d'euros passent entre vos mains. Quels produits commander en plus ? Quelles zones ouvrir plus tôt ? Quelles invitations supprimer ? Sans outil, ces décisions coûtent.</p>
+        <div class="growth-cta-box">
+          <button onclick="openModal()" class="btn-primary" style="flex-shrink:0">
+            Voir la démo gratuitement
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <span class="growth-guarantee">Démo gratuite · Aucun engagement</span>
+            <span class="growth-guarantee">Adapté à votre secteur en 48h</span>
+            <span class="growth-guarantee">Données confidentielles, hébergées localement</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tableau comparatif -->
+    <div class="reveal">
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th class="bad">Sans Event Analytics</th>
+            <th class="good">Avec Event Analytics</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Consolidation des données</td>
+            <td class="bad">2-3 jours de travail manuel</td>
+            <td class="good">Instantané après import</td>
+          </tr>
+          <tr>
+            <td>Comparaison inter-éditions</td>
+            <td class="bad">Impossible ou très fastidieux</td>
+            <td class="good">3 ans en un écran</td>
+          </tr>
+          <tr>
+            <td>Rentabilité des invitations</td>
+            <td class="bad">Inconnue ou estimée à vue</td>
+            <td class="good">Calculée depuis la BDD réelle</td>
+          </tr>
+          <tr>
+            <td>Prévision des stocks</td>
+            <td class="bad">À l'expérience, souvent faux</td>
+            <td class="good">Par bar, heure et produit</td>
+          </tr>
+          <tr>
+            <td>Présentation direction</td>
+            <td class="bad">Graphiques Excel refaits à la main</td>
+            <td class="good">Export PDF prêt en 1 clic</td>
+          </tr>
+          <tr>
+            <td>Profil client</td>
+            <td class="bad">Approximations marketing</td>
+            <td class="good">Âge, genre, panier, préférences réels</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Urgence -->
+    <div class="urgency-bar reveal">
+      <div class="urgency-dot"></div>
+      <p class="urgency-text">
+        <strong>Votre prochaine édition approche.</strong>
+        Chaque semaine sans données fiables, c'est une décision de plus prise à l'instinct.
+        La démo dure 30 minutes et ne coûte rien.
+      </p>
+      <button onclick="openModal()" class="btn-primary" style="flex-shrink:0;padding:12px 24px;font-size:14px;">
+        Réserver ma démo →
+      </button>
+    </div>
+
+  </div>
+</section>
+
+<!-- VIDEO -->
+<section class="video-section" id="video">
+  <div class="container">
+    <div class="reveal">
+      <p class="section-label">Présentation</p>
+      <h2 class="section-h2">Voyez l'outil <em>en action.</em></h2>
+      <p class="section-sub">Une démonstration complète de la plateforme sur des données réelles de festival.</p>
+    </div>
+    <div class="video-container reveal">
+      <!-- Quand la vidéo MP4 est disponible, remplacer par :
+           <video src="video/demo.mp4" controls poster="video/poster.jpg" style="width:100%;height:100%;object-fit:cover"></video>
+      -->
+      <div class="video-placeholder">
+        <button class="play-btn" onclick="openModal()">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        </button>
+        <p style="margin-top:8px"><strong style="color:white">Présentation Event Analytics — 1 min 20</strong></p>
+        <p style="margin-top:8px">Demandez la démo pour voir la plateforme en direct sur vos données.</p>
+      </div>
+    </div>
+    <p class="video-note">8 scènes · Données réelles · Rendu avec Remotion</p>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section" id="cta">
+  <h2 class="cta-h2 reveal">Prêt à piloter<br>par la data ?</h2>
+  <p class="cta-sub reveal">Démo personnalisée en 48h. Adapté à votre secteur. Sans engagement.</p>
+  <div class="cta-actions reveal">
+    <button onclick="openModal()" class="btn-white">
+      Demander une démo gratuite
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </button>
+    <a href="#features" class="btn-outline-white">Voir les modules</a>
+  </div>
+  <div class="cta-types reveal">
+    <span class="cta-type">Festival</span>
+    <span class="cta-type">Afterwork</span>
+    <span class="cta-type">Salon</span>
+    <span class="cta-type">Escape Game</span>
+    <span class="cta-type">Concert</span>
+    <span class="cta-type">Toute entreprise</span>
+  </div>
+  <p style="margin-top:28px;font-size:12px;color:rgba(255,255,255,0.35);position:relative;z-index:1;">
+    ✓ Gratuit · ✓ Réponse en 48h · ✓ Aucune carte bancaire
+  </p>
+</section>
+
+<!-- MODAL FORMSPREE -->
+<!-- SETUP FORMSPREE : aller sur formspree.io → New Form → copier l'ID → remplacer YOUR_FORM_ID ci-dessous -->
+<div class="modal-overlay" id="contactModal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div id="formContent">
+      <h2 class="modal-title">Demandez votre<br><em>démo gratuite</em></h2>
+      <p class="modal-sub">Réponse sous 48h. Nous adaptons la démonstration à votre secteur et vos données.</p>
+      <!-- ACTION : formspree.io → "New Form" → remplacer YOUR_FORM_ID par l'ID à 8 caractères -->
+      <!-- Ou utiliser directement l'email : https://formspree.io/jimmysinnan@gmail.com -->
+      <form action="https://formspree.io/jimmysinnan@gmail.com" method="POST" onsubmit="handleSubmit(event)">
+        <input type="hidden" name="_subject" value="Demande de démo Event Analytics" />
+        <input type="hidden" name="_replyto" value="" />
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Prénom</label>
+            <input class="form-input" type="text" name="prenom" placeholder="Votre prénom" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Nom</label>
+            <input class="form-input" type="text" name="nom" placeholder="Votre nom" required />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email professionnel</label>
+          <input class="form-input" type="email" name="email" placeholder="vous@votreentreprise.com" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Type d'événement</label>
+          <select class="form-select form-input" name="type_evenement" required>
+            <option value="">Sélectionner votre secteur</option>
+            <option>Festival de musique</option>
+            <option>Afterwork / Soirée dansante</option>
+            <option>Salon / Conférence</option>
+            <option>Escape Game / Loisirs</option>
+            <option>Concert / Spectacle</option>
+            <option>Pop-up / Marché</option>
+            <option>Autre événement</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Votre besoin <span style="font-weight:400;text-transform:none;font-size:11px;color:#9A8A7A">(optionnel)</span></label>
+          <textarea class="form-textarea" name="besoin" placeholder="Décrivez votre événement, votre problématique data, ce que vous cherchez à mesurer..."></textarea>
+        </div>
+        <button type="submit" class="form-submit">
+          Envoyer ma demande
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+        <p class="form-note">Vos données ne sont jamais revendues · Réponse personnalisée garantie</p>
+      </form>
+    </div>
+    <div class="form-success" id="formSuccess">
+      <div class="form-success-icon">✅</div>
+      <h3>Message envoyé !</h3>
+      <p>Nous reviendrons vers vous sous 48h pour organiser votre démo personnalisée.</p>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-logo">Event <span>Analytics</span></div>
+  <ul class="footer-links">
+    <li><a href="#">Contact</a></li>
+    <li><a href="#">Modules</a></li>
+    <li><a href="#">À propos</a></li>
+  </ul>
+  <p class="footer-copy">© 2026 Event Analytics — Tous droits réservés</p>
+</footer>
+
+<script>
+// ── Scroll reveal ────────────────────────────────────────────
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible') })
+}, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' })
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el))
+
+// ── Counter animation ────────────────────────────────────────
+function animateCounters() {
+  document.querySelectorAll('.proof-val').forEach(el => {
+    const text = el.textContent
+    const num  = parseFloat(text.replace(/[^0-9.]/g, ''))
+    const suffix = text.replace(/[0-9.]/g, '')
+    if (!num) return
+    let start = 0
+    const step = num / 60
+    const interval = setInterval(() => {
+      start += step
+      if (start >= num) { start = num; clearInterval(interval) }
+      el.innerHTML = `${Math.round(start)}<span>${suffix}</span>`
+    }, 20)
+  })
+}
+const proofSection = document.querySelector('.proof-section')
+if (proofSection) {
+  const proofObs = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting) { animateCounters(); proofObs.disconnect() }
+  }, { threshold: 0.3 })
+  proofObs.observe(proofSection)
+}
+
+// ── Smooth anchor scroll ─────────────────────────────────────
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.addEventListener('click', e => {
+    const target = document.querySelector(a.getAttribute('href'))
+    if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
+  })
+})
+
+// ── Modal Formspree ──────────────────────────────────────────
+function openModal() {
+  document.getElementById('contactModal').classList.add('open')
+  document.body.style.overflow = 'hidden'
+}
+function closeModal() {
+  document.getElementById('contactModal').classList.remove('open')
+  document.body.style.overflow = ''
+}
+// Fermer avec Escape
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal() })
+
+async function handleSubmit(e) {
+  e.preventDefault()
+  const form    = e.target
+  const btn     = form.querySelector('.form-submit')
+  const origTxt = btn.innerHTML
+
+  btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg> Envoi en cours…'
+  btn.disabled  = true
+
+  try {
+    const data = new FormData(form)
+    const res  = await fetch(form.action, {
+      method:  'POST',
+      body:    data,
+      headers: { Accept: 'application/json' }
+    })
+
+    if (res.ok) {
+      document.getElementById('formContent').style.display = 'none'
+      document.getElementById('formSuccess').style.display = 'block'
+    } else {
+      throw new Error('Erreur serveur')
+    }
+  } catch {
+    btn.innerHTML = origTxt
+    btn.disabled  = false
+    alert('Une erreur est survenue. Réessayez ou contactez jimmysinnan@gmail.com directement.')
+  }
+}
+
+// ── Spin animation pour le bouton ────────────────────────────
+const style = document.createElement('style')
+style.textContent = '@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }'
+document.head.appendChild(style)
+</script>
+</body>
+</html>
