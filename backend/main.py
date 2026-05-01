@@ -496,8 +496,6 @@ def rollback_snapshot(snap_id: str):
 @app.get("/api/report/{edition_id}")
 def download_report(edition_id: str, edition_name: str = "Édition"):
     """Génère et télécharge un rapport texte pour une édition."""
-    from services.report_generator import export_report_bytes
-
     state = get_state(edition_id)
 
     # Récupérer les kpis_avances depuis le dernier import actif
@@ -519,6 +517,78 @@ def download_report(edition_id: str, edition_name: str = "Édition"):
         content=report_bytes,
         media_type='text/plain; charset=utf-8',
         headers={'Content-Disposition': f'attachment; filename="rapport_{safe_name}.txt"'}
+    )
+
+
+# ── Rapports IA — Claude Sonnet 4.6 ───────────────────────────────────────────
+
+def _get_kpis_for_edition(edition_id: str) -> tuple:
+    """Retourne (kpis, state) pour une édition."""
+    state = get_state(edition_id)
+    kpis  = None
+    with get_db() as conn:
+        row = conn.execute("""
+            SELECT raw_json FROM imports
+            WHERE edition_id = ? AND status = 'active'
+            ORDER BY imported_at DESC LIMIT 1
+        """, (edition_id,)).fetchone()
+    if row:
+        kpis = json.loads(row['raw_json']).get('kpis_avances')
+    return kpis or {}, state
+
+
+@app.post("/api/ai/report/{edition_id}")
+async def ai_report(
+    edition_id: str,
+    request: Request,
+    report_type: str = "executive",
+    edition_name: str = "Édition",
+):
+    """
+    Génère un rapport IA (Claude Sonnet 4.6).
+    report_type : executive | recommandations | pertes_invisibles | partenaires
+    La clé API peut être passée dans le body JSON { api_key: "sk-ant-..." }
+    ou configurée dans backend/.env
+    """
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+
+    api_key = body.get('api_key', '')
+    kpis, state = _get_kpis_for_edition(edition_id)
+
+    result = generate_ai_report(report_type, kpis, state, edition_name)
+    return jsonify(result)
+
+
+from fastapi.responses import StreamingResponse
+
+@app.post("/api/ai/report/{edition_id}/stream")
+async def ai_report_stream(
+    edition_id: str,
+    request: Request,
+    report_type: str = "executive",
+    edition_name: str = "Édition",
+):
+    """
+    Version streaming — renvoie le texte chunk par chunk (Server-Sent Events).
+    Produit un effet "typing" dans le frontend.
+    """
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+
+    api_key = body.get('api_key', '')
+    kpis, state = _get_kpis_for_edition(edition_id)
+
+    return StreamingResponse(
+        generate_ai_report_stream(report_type, kpis, state, edition_name, api_key),
+        media_type='text/event-stream',
+        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
     )
 
 

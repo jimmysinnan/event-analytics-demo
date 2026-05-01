@@ -4,6 +4,7 @@ import {
   AlertCircle, BarChart3, Users, Globe, Zap
 } from 'lucide-react'
 import SectionCard from '../components/ui/SectionCard'
+import AiReport from '../components/AiReport'
 import { useEdition } from '../context/EditionContext'
 
 const API = 'http://localhost:8001'
@@ -217,14 +218,17 @@ export default function Restitution() {
         </p>
       </div>
 
-      {/* Rapport billetterie */}
+      {/* ── Analyse IA — Claude Sonnet 4.6 ── */}
+      <AiReport />
+
+      {/* Rapport billetterie texte */}
       <div className="flex justify-end">
         <button
           onClick={handleDownloadReport}
           className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition hover:opacity-80"
-          style={{ background: '#6366F1' }}>
+          style={{ background: '#111D33', border: '1px solid #1A2840', color: '#8B9BB4' }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Rapport billetterie
+          Exporter données brutes (.txt)
         </button>
       </div>
 
