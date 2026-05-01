@@ -92,13 +92,23 @@ export function createEdition(data = {}) {
 // ── Canaux & Thème ───────────────────────────────────────────────────────────────
 // ── Canaux de distribution ─────────────────────────────────────────────────────
 export const CHANNEL_TYPES = [
-  { id: 'weezevent',  label: 'Weezevent',              icon: '🎫' },
-  { id: 'bizouk',     label: 'Bizouk',                  icon: '🎟️' },
-  { id: 'cse',        label: 'CSE / Comité entreprise', icon: '🏢' },
-  { id: 'physique',   label: 'Vente physique / Réseau', icon: '🏪' },
-  { id: 'helloasso',  label: 'HelloAsso',               icon: '💙' },
-  { id: 'billetweb',  label: 'Billetweb',               icon: '🏷️' },
-  { id: 'autre',      label: 'Autre',                   icon: '📋' },
+  // ── Billetterie événementielle ─────────────────────────────
+  { id: 'weezevent',  label: 'Weezevent',              icon: '🎫', group: 'billetterie' },
+  { id: 'bizouk',     label: 'Bizouk',                  icon: '🎟️', group: 'billetterie' },
+  { id: 'eventbrite', label: 'Eventbrite',              icon: '📋', group: 'billetterie' },
+  { id: 'yurplan',    label: 'Yurplan',                 icon: '📊', group: 'billetterie' },
+  { id: 'shotgun',    label: 'Shotgun',                  icon: '🎯', group: 'billetterie' },
+  { id: 'billetweb',  label: 'Billetweb',               icon: '🏷️', group: 'billetterie' },
+  { id: 'helloasso',  label: 'HelloAsso',               icon: '💙', group: 'billetterie' },
+  // ── Paiement en ligne ──────────────────────────────────────
+  { id: 'shopify',    label: 'Shopify',                 icon: '🛒', group: 'paiement' },
+  { id: 'stripe',     label: 'Stripe',                  icon: '💳', group: 'paiement' },
+  { id: 'sumup',      label: 'SumUp',                   icon: '💰', group: 'paiement' },
+  // ── Sur site ────────────────────────────────────────────────
+  { id: 'caisse',     label: 'Système de caisse',       icon: '🏧', group: 'sursite' },
+  { id: 'cse',        label: 'CSE / Comité entreprise', icon: '🏢', group: 'sursite' },
+  { id: 'physique',   label: 'Vente physique / Réseau', icon: '🏪', group: 'sursite' },
+  { id: 'autre',      label: 'Autre',                   icon: '📋', group: 'autre' },
 ]
 
 export function createChannel(data = {}) {

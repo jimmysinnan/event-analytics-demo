@@ -579,6 +579,8 @@ PARSERS = {
     'shotgun':    parse_shotgun,
     'stripe':     parse_stripe,
     'sumup':      parse_sumup,
+    'shopify':    parse_generic,   # Shopify orders CSV — mêmes colonnes génériques
+    'caisse':     parse_generic,   # Export caisse (Lightspeed, Clover, etc.) — format variable
     'generic':    parse_generic,
 }
 
@@ -592,6 +594,8 @@ SOURCE_LABELS = {
     'shotgun':    'Shotgun',
     'stripe':     'Stripe',
     'sumup':      'SumUp',
+    'shopify':    'Shopify',
+    'caisse':     'Système de caisse',
     'generic':    'CSV / Excel générique',
 }
 

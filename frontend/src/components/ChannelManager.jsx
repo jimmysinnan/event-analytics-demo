@@ -45,22 +45,40 @@ export default function ChannelManager() {
             onFocus={e => e.target.style.borderColor = '#6366F1'}
             onBlur={e  => e.target.style.borderColor = '#1A2840'}
           />
-          <div className="grid grid-cols-3 gap-1.5">
-            {CHANNEL_TYPES.map(t => (
-              <button
-                key={t.id}
-                onClick={() => setForm(f => ({ ...f, type: t.id }))}
-                className="flex flex-col items-center gap-0.5 p-2 rounded-lg text-xs font-medium transition"
-                style={{
-                  background: form.type === t.id ? 'rgba(99,102,241,0.2)' : '#0D1526',
-                  border:     `1px solid ${form.type === t.id ? '#6366F1' : '#1A2840'}`,
-                  color:      form.type === t.id ? '#A5B4FC' : '#8B9BB4',
-                }}>
-                <span className="text-sm leading-none">{t.icon}</span>
-                <span className="leading-tight text-center" style={{ fontSize: '0.6rem' }}>{t.label}</span>
-              </button>
-            ))}
-          </div>
+          {/* Groupes de sources */}
+          {[
+            { key: 'billetterie', label: 'Billetterie événementielle' },
+            { key: 'paiement',    label: 'Paiement en ligne' },
+            { key: 'sursite',     label: 'Sur site / Réseau' },
+            { key: 'autre',       label: 'Autre' },
+          ].map(group => {
+            const types = CHANNEL_TYPES.filter(t => t.group === group.key)
+            if (!types.length) return null
+            return (
+              <div key={group.key}>
+                <p className="text-2xs font-semibold uppercase tracking-widest mb-1.5"
+                  style={{ color: '#4A5568', fontSize: '0.55rem' }}>
+                  {group.label}
+                </p>
+                <div className="grid grid-cols-4 gap-1.5 mb-2">
+                  {types.map(t => (
+                    <button
+                      key={t.id}
+                      onClick={() => setForm(f => ({ ...f, type: t.id }))}
+                      className="flex flex-col items-center gap-0.5 p-2 rounded-lg text-xs font-medium transition"
+                      style={{
+                        background: form.type === t.id ? 'rgba(99,102,241,0.2)' : '#0D1526',
+                        border:     `1px solid ${form.type === t.id ? '#6366F1' : '#1A2840'}`,
+                        color:      form.type === t.id ? '#A5B4FC' : '#8B9BB4',
+                      }}>
+                      <span className="text-sm leading-none">{t.icon}</span>
+                      <span className="leading-tight text-center" style={{ fontSize: '0.55rem' }}>{t.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
           <div className="flex gap-2">
             <button
               onClick={() => { setAdding(false); setForm({ name: '', type: 'weezevent' }) }}

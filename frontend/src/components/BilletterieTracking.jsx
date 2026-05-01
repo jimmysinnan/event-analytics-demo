@@ -32,6 +32,8 @@ const SOURCES = [
   { id: 'shotgun',    label: 'Shotgun',                  icon: '🔫', hint: 'Orders export CSV' },
   { id: 'stripe',     label: 'Stripe',                  icon: '💳', hint: 'Payments export depuis Dashboard → Reports' },
   { id: 'sumup',      label: 'SumUp',                   icon: '💰', hint: 'Transaction history export CSV' },
+  { id: 'shopify',    label: 'Shopify',                 icon: '🛒', hint: 'Orders export CSV depuis Admin → Commandes → Exporter' },
+  { id: 'caisse',     label: 'Système de caisse',       icon: '🏧', hint: 'Export CSV de votre logiciel de caisse (Lightspeed, Clover, etc.)' },
   { id: 'generic',    label: 'CSV / Excel générique',   icon: '📁', hint: 'Tout fichier CSV ou Excel structuré' },
 ]
 
@@ -39,6 +41,7 @@ const SOURCE_COLORS = {
   weezevent:  '#06B6D4', bizouk: '#8B5CF6', eventbrite: '#F97316',
   billetweb:  '#10B981', helloasso: '#3B82F6', yurplan: '#EC4899',
   shotgun:    '#EF4444', stripe: '#6366F1', sumup: '#F59E0B',
+  shopify:    '#96BF48', caisse: '#8B9BB4',
   generic:    '#8B9BB4', auto: '#068EEA',
 }
 
