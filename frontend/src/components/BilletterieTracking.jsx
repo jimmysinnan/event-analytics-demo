@@ -358,7 +358,15 @@ export default function BilletterieTracking() {
   const editionId = activeEdition?.id ?? null
 
   const { channels } = useEventContext()
-  const [channelId,    setChannelId]    = useState(null)
+  const [channelIds, setChannelIds] = useState(new Set()) // multi-sélection
+
+  function toggleChannel(id) {
+    setChannelIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
 
   const [source,      setSource]      = useState('auto')
   const [file,        setFile]        = useState(null)
@@ -398,7 +406,8 @@ export default function BilletterieTracking() {
     try {
       const params = new URLSearchParams({ source, save: 'true' })
       if (editionId) params.set('edition_id', editionId)
-      if (channelId) params.set('channel_id', channelId)
+      // Envoyer la liste de canaux sélectionnés (virgule-séparé)
+      if (channelIds.size > 0) params.set('channel_ids', [...channelIds].join(','))
       const url = `${API}/api/upload/import?${params}`
       const res = await fetch(url, { method: 'POST', body: form })
       if (!res.ok) {
@@ -419,7 +428,7 @@ export default function BilletterieTracking() {
     }
   }
 
-  function reset() { setFile(null); setStatus('idle'); setData(null) }
+  function reset() { setFile(null); setStatus('idle'); setData(null); setChannelIds(new Set()) }
 
   function onDrop(e) {
     e.preventDefault(); setDragging(false)
@@ -449,42 +458,59 @@ export default function BilletterieTracking() {
         )}
       </SectionCard>
 
-      {/* Canal de distribution */}
+      {/* Canaux de distribution — multi-sélection */}
       {channels.length > 0 && (
-        <SectionCard title="Canal de distribution" subtitle="Associer cet import à un canal">
+        <SectionCard
+          title="Canaux de distribution"
+          subtitle={channelIds.size === 0
+            ? 'Optionnel — sélectionner un ou plusieurs canaux concernés par cet import'
+            : `${channelIds.size} canal${channelIds.size > 1 ? 'x' : ''} sélectionné${channelIds.size > 1 ? 's' : ''}`
+          }>
           <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setChannelId(null)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium transition"
-              style={{
-                background: channelId === null ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.02)',
-                border:     `1px solid ${channelId === null ? '#6366F1' : '#1A2840'}`,
-                color:      channelId === null ? '#A5B4FC' : '#8B9BB4',
-              }}>
-              Tous canaux
-            </button>
             {channels.map(ch => {
-              const type = CHANNEL_TYPES.find(t => t.id === ch.type)
+              const type    = CHANNEL_TYPES.find(t => t.id === ch.type)
+              const checked = channelIds.has(ch.id)
               return (
                 <button
                   key={ch.id}
-                  onClick={() => setChannelId(id => id === ch.id ? null : ch.id)}
+                  onClick={() => toggleChannel(ch.id)}
                   className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium transition"
                   style={{
-                    background: channelId === ch.id ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.02)',
-                    border:     `1px solid ${channelId === ch.id ? '#6366F1' : '#1A2840'}`,
-                    color:      channelId === ch.id ? '#A5B4FC' : '#8B9BB4',
+                    background: checked ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.02)',
+                    border:     `1px solid ${checked ? '#6366F1' : '#1A2840'}`,
+                    color:      checked ? '#A5B4FC' : '#8B9BB4',
                   }}>
-                  <span className="text-sm leading-none">{type?.icon}</span>
+                  {/* Checkbox visuelle */}
+                  <span
+                    className="flex items-center justify-center rounded"
+                    style={{
+                      width: 14, height: 14, flexShrink: 0,
+                      background: checked ? '#6366F1' : 'transparent',
+                      border: `1.5px solid ${checked ? '#6366F1' : '#4A5568'}`,
+                    }}>
+                    {checked && (
+                      <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                        <polyline points="1.5,4.5 3.5,6.5 7.5,2.5" stroke="white" strokeWidth="1.5"
+                          strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    )}
+                  </span>
+                  <span className="leading-none">{type?.icon}</span>
                   {ch.name}
                 </button>
               )
             })}
           </div>
-          {channelId && (
-            <p className="text-xs mt-2" style={{ color: '#4A5568' }}>
-              Import associé au canal sélectionné — visible dans l'historique par canal.
-            </p>
+          {channelIds.size > 0 && (
+            <div className="flex items-center justify-between mt-2">
+              <p className="text-xs" style={{ color: '#4A5568' }}>
+                Import rattaché à {channelIds.size > 1 ? 'ces canaux' : 'ce canal'}.
+              </p>
+              <button onClick={() => setChannelIds(new Set())}
+                className="text-xs hover:underline" style={{ color: '#4A5568' }}>
+                Effacer
+              </button>
+            </div>
           )}
         </SectionCard>
       )}
