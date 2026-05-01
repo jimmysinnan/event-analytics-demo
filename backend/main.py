@@ -1,5 +1,5 @@
 """
-Baccha Analytics — FastAPI backend
+Event Analytics — FastAPI backend
 """
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,22 +26,46 @@ from database import (
     save_conso_state, get_conso_state,
 )
 
-app = FastAPI(title="Event Analytics Demo API", version="2.0.0")
+app = FastAPI(title="Event Analytics API", version="2.0.0")
 
 @app.on_event("startup")
 def startup():
     init_db()
 
+# CORS — origines autorisées + origines configurables via env
+_cors_origins = [
+    "http://localhost:5173", "http://localhost:4173",
+    "http://localhost:5174", "http://localhost:4174",
+]
+_extra_origins = os.environ.get('CORS_ORIGINS', '')
+if _extra_origins:
+    _cors_origins += [o.strip() for o in _extra_origins.split(',') if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173", "http://localhost:4173",
-        "http://localhost:5174", "http://localhost:4174",
-    ],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Auth — token statique optionnel ───────────────────────────────────────────
+# Si API_SECRET_TOKEN est défini dans .env, toutes les requêtes doivent
+# inclure l'en-tête X-API-Token avec la valeur correspondante.
+# Laisser vide (défaut) pour désactiver en local.
+_API_TOKEN = os.environ.get('API_SECRET_TOKEN', '').strip()
+
+@app.middleware('http')
+async def check_token(request: Request, call_next):
+    if not _API_TOKEN:
+        return await call_next(request)
+    # Laisser passer CORS preflight, health, docs
+    if request.method == 'OPTIONS' or request.url.path in ('/', '/health', '/docs', '/openapi.json', '/redoc'):
+        return await call_next(request)
+    token = request.headers.get('X-API-Token', '')
+    if token != _API_TOKEN:
+        return JSONResponse({'error': 'Unauthorized — X-API-Token requis'}, status_code=401)
+    return await call_next(request)
 
 
 # ── JSON encoder pour numpy ────────────────────────────────────────────────────
@@ -69,7 +93,8 @@ async def read_excel(file: UploadFile, sheet_name=0) -> pd.DataFrame:
 # ── Routes ─────────────────────────────────────────────────────────────────────
 @app.get("/")
 def root():
-    return {"status": "ok", "service": "Baccha Analytics API v1.0"}
+    app_name = os.environ.get('APP_NAME', 'Event Analytics')
+    return {"status": "ok", "service": f"{app_name} API v2.0"}
 
 
 @app.get("/health")
@@ -254,13 +279,17 @@ PDF_TYPES = {
     'profil':  ("Présentation profil client de l'édition 2025.pdf", generate_profil),
 }
 
-SOURCE_DIR = r'C:\Users\jimmy\OneDrive\Bureau\Baccha\2025'
+# SOURCE_DIR est configurable via variable d'environnement.
+# En l'absence de configuration, les PDF de référence ne sont pas disponibles.
+SOURCE_DIR = os.environ.get('PDF_SOURCE_DIR', '')
 
 @app.get("/api/pdf/existing/{pdf_type}")
 def get_existing_pdf(pdf_type: str):
-    """Sert le PDF existant depuis le dossier 2025."""
+    """Sert un PDF de référence depuis PDF_SOURCE_DIR (configurable dans .env)."""
     if pdf_type not in PDF_TYPES:
         raise HTTPException(404, "Type inconnu")
+    if not SOURCE_DIR:
+        raise HTTPException(503, detail="PDF_SOURCE_DIR non configuré — fonctionnalité indisponible dans cette installation.")
     filename, _ = PDF_TYPES[pdf_type]
     path = os.path.join(SOURCE_DIR, filename)
     if not os.path.exists(path):
@@ -270,7 +299,10 @@ def get_existing_pdf(pdf_type: str):
 
 @app.get("/api/pdf/generate/{pdf_type}")
 def generate_pdf(pdf_type: str, edition: int = 2025):
-    """Génère un nouveau PDF avec les données de l'édition."""
+    """Génère un PDF de présentation.
+    Note : contenu basé sur les données de démonstration intégrées.
+    La génération dynamique depuis les données client sera disponible en V2.
+    """
     if pdf_type not in PDF_TYPES:
         raise HTTPException(404, "Type inconnu")
     filename, generator_fn = PDF_TYPES[pdf_type]
@@ -679,11 +711,12 @@ def list_pdfs():
     """Retourne la liste des PDFs disponibles avec leur statut."""
     result = []
     for key, (filename, _) in PDF_TYPES.items():
-        path = os.path.join(SOURCE_DIR, filename)
-        result.append({
-            'key': key,
-            'filename': filename,
-            'exists': os.path.exists(path),
-            'size_kb': round(os.path.getsize(path) / 1024) if os.path.exists(path) else None,
-        })
+        if SOURCE_DIR:
+            path = os.path.join(SOURCE_DIR, filename)
+            exists   = os.path.exists(path)
+            size_kb  = round(os.path.getsize(path) / 1024) if exists else None
+        else:
+            exists  = False
+            size_kb = None
+        result.append({'key': key, 'filename': filename, 'exists': exists, 'size_kb': size_kb})
     return result

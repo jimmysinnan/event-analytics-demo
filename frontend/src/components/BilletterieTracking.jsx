@@ -17,8 +17,7 @@ import { useEventContext } from '../context/EventContext'
 import { CHANNEL_TYPES } from '../lib/models'
 import BilletterieComposition from './BilletterieComposition'
 import TendanceHoraire from './TendanceHoraire'
-
-const API = 'http://localhost:8001'
+import { API, uploadHeaders } from '../lib/api'
 
 // ── Sources supportées ────────────────────────────────────────────────────────
 const SOURCES = [

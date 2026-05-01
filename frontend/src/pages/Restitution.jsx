@@ -6,8 +6,7 @@ import {
 import SectionCard from '../components/ui/SectionCard'
 import AiReport from '../components/AiReport'
 import { useEdition } from '../context/EditionContext'
-
-const API = 'http://localhost:8001'
+import { API } from '../lib/api'
 
 const PRESENTATIONS = [
   {
@@ -117,7 +116,7 @@ function PdfCard({ pres, year }) {
 
       {/* Actions */}
       <div className="flex gap-2 pt-2 border-t border-[#1A2840]">
-        {/* Consulter l'existant */}
+        {/* Consulter l'existant — disponible uniquement si PDF_SOURCE_DIR configuré */}
         <button
           onClick={viewExisting}
           disabled={viewStatus === 'loading'}
@@ -132,11 +131,11 @@ function PdfCard({ pres, year }) {
             className={viewStatus === 'loading' ? 'animate-spin' : ''} />
           {viewStatus === 'loading' ? 'Ouverture…'
            : viewStatus === 'success' ? 'Ouvert !'
-           : viewStatus === 'error'   ? 'Non disponible'
-           : 'Consulter (2025)'}
+           : viewStatus === 'error'   ? 'Non configuré'
+           : 'Consulter PDF'}
         </button>
 
-        {/* Générer nouveau */}
+        {/* Générer — données de démonstration intégrées */}
         <button
           onClick={generateNew}
           disabled={genStatus === 'loading'}
@@ -156,10 +155,19 @@ function PdfCard({ pres, year }) {
             className={genStatus === 'loading' ? 'animate-spin' : ''} />
           {genStatus === 'loading' ? 'Génération…'
            : genStatus === 'success' ? 'Téléchargé !'
-           : genStatus === 'error'   ? 'Erreur génération'
-           : `Générer ${year}`}
+           : genStatus === 'error'   ? 'Erreur'
+           : <span className="flex items-center gap-1">
+               Générer
+               <span className="opacity-60 text-2xs px-1 py-0.5 rounded" style={{ fontSize: '0.55rem', background: 'rgba(255,255,255,0.08)' }}>DÉMO</span>
+             </span>
+          }
         </button>
       </div>
+
+      {/* Note démo sous les boutons */}
+      <p className="text-2xs text-center leading-snug" style={{ color: '#4A5568', fontSize: '0.575rem' }}>
+        Générer produit un PDF avec les données de démonstration intégrées.
+      </p>
     </div>
   )
 }
@@ -171,7 +179,7 @@ export default function Restitution() {
 
   async function handleDownloadReport() {
     if (!editionId) return
-    const url = `http://localhost:8001/api/report/${editionId}?edition_name=${encodeURIComponent(editionName ?? 'Edition')}`
+    const url = `${API}/api/report/${editionId}?edition_name=${encodeURIComponent(editionName ?? 'Edition')}`
     const res = await fetch(url)
     if (!res.ok) return
     const blob = await res.blob()

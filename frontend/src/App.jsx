@@ -8,8 +8,8 @@ import ProfilClient  from './pages/ProfilClient'
 import Invitations   from './pages/Invitations'
 import Stocks        from './pages/Stocks'
 import Restitution   from './pages/Restitution'
-import Historique    from './pages/Historique'
-import Parametres    from './pages/Parametres'
+import Import        from './pages/Import'
+import Settings      from './pages/Settings'
 import Evenements    from './pages/Evenements'
 
 export default function App() {
@@ -18,16 +18,16 @@ export default function App() {
       <EventProvider>
         <Routes>
           <Route element={<Layout />}>
-            <Route index                element={<VueGlobale />}    />
-            <Route path="evenements"    element={<Evenements />}    />
-            <Route path="billetterie"   element={<Billetterie />}   />
-            <Route path="consommation"  element={<Consommation />}  />
-            <Route path="profil-client" element={<ProfilClient />}  />
-            <Route path="invitations"   element={<Invitations />}   />
-            <Route path="stocks"        element={<Stocks />}        />
-            <Route path="restitution"   element={<Restitution />}   />
-            <Route path="historique"    element={<Historique />}    />
-            <Route path="parametres"    element={<Parametres />}    />
+            <Route index                element={<VueGlobale />}   />
+            <Route path="evenements"    element={<Evenements />}   />
+            <Route path="billetterie"   element={<Billetterie />}  />
+            <Route path="consommation"  element={<Consommation />} />
+            <Route path="profil-client" element={<ProfilClient />} />
+            <Route path="invitations"   element={<Invitations />}  />
+            <Route path="stocks"        element={<Stocks />}       />
+            <Route path="restitution"   element={<Restitution />}  />
+            <Route path="import"        element={<Import />}       />
+            <Route path="parametres"    element={<Settings />}     />
           </Route>
         </Routes>
       </EventProvider>

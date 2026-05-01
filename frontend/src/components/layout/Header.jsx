@@ -1,18 +1,18 @@
 import { useState, useRef, useEffect } from 'react'
-import { Upload, RefreshCw, Calendar, ChevronDown, Bell, Check } from 'lucide-react'
+import { Upload, Calendar, ChevronDown, Check } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useEdition } from '../../context/EditionContext'
 
 const PAGE_TITLES = {
-  '/':              { title: 'Vue Globale',    sub: 'Performance consolidée toutes éditions' },
-  '/billetterie':   { title: 'Billetterie',    sub: 'Ventes, canaux, Pass Culture, CSE' },
-  '/consommation':  { title: 'Consommation',   sub: 'CA, points de vente, top produits' },
-  '/profil-client': { title: 'Profil Client',  sub: 'Démographie, comportement, tranches d\'âge' },
-  '/invitations':   { title: 'Invitations',    sub: 'Volume, valeur, rentabilité' },
-  '/stocks':        { title: 'Stocks Édition+1', sub: 'Rotation, prévisions, tensions' },
-  '/restitution':   { title: 'Restitution PDF', sub: 'Consulter et générer les 3 présentations' },
-  '/historique':    { title: 'Historique',     sub: 'Comparatif multi-éditions depuis 2016' },
-  '/parametres':    { title: 'Paramètres',     sub: 'Configuration et import de données' },
+  '/':              { title: 'Vue Globale',       sub: 'Performance consolidée toutes éditions' },
+  '/billetterie':   { title: 'Billetterie',       sub: 'Ventes, canaux, Pass Culture, CSE' },
+  '/consommation':  { title: 'Consommation',      sub: 'CA, points de vente, top produits' },
+  '/profil-client': { title: 'Profil Client',     sub: 'Démographie, comportement, tranches d\'âge' },
+  '/invitations':   { title: 'Invitations',       sub: 'Volume, valeur, rentabilité' },
+  '/stocks':        { title: 'Stocks Édition+1',  sub: 'Prévisions par bar et produit' },
+  '/restitution':   { title: 'Restitution PDF',   sub: 'Rapports IA et présentations' },
+  '/import':        { title: 'Importer données',  sub: 'Upload des fichiers de consommation et billetterie' },
+  '/parametres':    { title: 'Paramètres',        sub: 'Configuration de l\'instance' },
 }
 
 export default function Header({ loading }) {
@@ -87,17 +87,6 @@ export default function Header({ loading }) {
             </div>
           )}
         </div>
-
-        {/* Refresh */}
-        <button className="p-2 rounded-lg border border-[#1A2840] text-[#8B9BB4] hover:bg-[#111D33] hover:text-white transition-all duration-150">
-          <RefreshCw size={14} strokeWidth={1.8} className={loading ? 'animate-spin' : ''} />
-        </button>
-
-        {/* Notifications */}
-        <button className="relative p-2 rounded-lg border border-[#1A2840] text-[#8B9BB4] hover:bg-[#111D33] hover:text-white transition-all duration-150">
-          <Bell size={14} strokeWidth={1.8} />
-          <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full" style={{ background: '#068EEA' }} />
-        </button>
 
         {/* Upload */}
         <button

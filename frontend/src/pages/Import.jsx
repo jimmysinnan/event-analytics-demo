@@ -277,7 +277,7 @@ function FileSlot({ slot, state, onDrop, onRemove, editionName, editionId }) {
   )
 }
 
-export default function Parametres() {
+export default function Import() {
   const [states, setStates]   = useState({})
   const { activeEdition }     = useEdition()
   const editionId   = activeEdition?.id   ?? ''

@@ -1,10 +1,11 @@
 """
-Générateur PDF — Baccha Festival
+Générateur PDF — Event Analytics
 Reproduit les 3 présentations de restitution :
   1. Global des chiffres
   2. Performance des points de vente
   3. Profil client
 """
+import os
 import io
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
@@ -54,7 +55,8 @@ def _header(c, title, subtitle='', year=2025):
     c.roundRect(badge_x, H - 52, 78, 24, 4, fill=1, stroke=0)
     c.setFillColor(BLUE)
     c.setFont('Helvetica-Bold', 8)
-    c.drawCentredString(badge_x + 39, H - 42, f'BACCHA {year}')
+    app_name = os.environ.get('APP_NAME', 'EVENT ANALYTICS').upper()
+    c.drawCentredString(badge_x + 39, H - 42, f'{app_name} {year}')
     c.setFillColor(GREY)
     c.setFont('Helvetica', 7)
     c.drawCentredString(badge_x + 39, H - 52 + 5, '12e édition')
@@ -70,7 +72,8 @@ def _footer(c, page, total):
     c.line(0, 24, W, 24)
     c.setFillColor(DARK)
     c.setFont('Helvetica', 7)
-    c.drawString(20, 12, 'Baccha Analytics — Confidentiel')
+    app_name = os.environ.get('APP_NAME', 'Event Analytics')
+    c.drawString(20, 12, f'{app_name} — Confidentiel')
     c.drawRightString(W - 20, 12, f'{page} / {total}')
 
 def _kpi_box(c, x, y, w, h, label, value, sub='', accent=BLUE):

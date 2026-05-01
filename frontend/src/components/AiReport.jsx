@@ -1,8 +1,7 @@
 import { useState, useRef } from 'react'
 import { Sparkles, Copy, Check, RefreshCw, Image, X } from 'lucide-react'
 import { useEdition } from '../context/EditionContext'
-
-const API = 'http://localhost:8001'
+import { API } from '../lib/api'
 
 const REPORT_TYPES = [
   {
