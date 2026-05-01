@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { Ticket, Users, Euro, Gift } from 'lucide-react'
 import KpiCard from '../components/ui/KpiCard'
@@ -7,6 +7,9 @@ import BilletterieTracking from '../components/BilletterieTracking'
 import { fmt } from '../lib/format'
 import { useEdition } from '../context/EditionContext'
 import { BILLETTERIE, AFFLUENCE } from '../lib/editionsData'
+import { getChannels } from '../store/eventStore'
+
+const LS_CHANNEL_TAB = 'ea_billetterie_channel_tab'
 
 const REALISE_2025 = [
   { label: 'Pass Week-End Regular',          tickets: 8689, ca: 708274, type: 'payant'     },
@@ -50,22 +53,41 @@ function Tip({ active, payload, label }) {
 }
 
 export default function Billetterie() {
-  const { year } = useEdition()
-  const [tab, setTab] = useState('analyse')
+  const { year, activeEdition } = useEdition()
+  const [tab,        setTab]        = useState('analyse')
+  const [channelTab, setChannelTab] = useState(() =>
+    localStorage.getItem(LS_CHANNEL_TAB) ?? 'total'
+  )
+  const [channels, setChannels] = useState([])
+
   const b  = BILLETTERIE[year]
   const af = AFFLUENCE[year]
 
   const totalTickets2025 = REALISE_2025.reduce((s, r) => s + r.tickets, 0)
   const totalCA2025      = REALISE_2025.reduce((s, r) => s + r.ca,      0)
 
+  // Charger les canaux de l'édition active
+  useEffect(() => {
+    if (activeEdition?.id) {
+      setChannels(getChannels(activeEdition.id))
+    }
+  }, [activeEdition?.id])
+
+  function switchChannelTab(id) {
+    setChannelTab(id)
+    localStorage.setItem(LS_CHANNEL_TAB, id)
+  }
+
+  const activeChannel = channels.find(c => c.id === channelTab) ?? null
+
   return (
     <div className="space-y-5 animate-slide-up">
 
-      {/* Tabs */}
+      {/* Tabs principaux */}
       <div className="flex items-center gap-1 p-1 rounded-xl w-fit" style={{ background: '#0D1526', border: '1px solid #1A2840' }}>
         {[
           { id: 'analyse', label: `Analyse ${year}` },
-          { id: 'suivi',   label: 'Suivi 2026 (live)' },
+          { id: 'suivi',   label: 'Suivi édition en cours (live)' },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150"
@@ -77,8 +99,70 @@ export default function Billetterie() {
         ))}
       </div>
 
-      {/* ── Onglet Suivi 2026 ── */}
-      {tab === 'suivi' && <BilletterieTracking />}
+      {/* ── Onglet Suivi live ── */}
+      {tab === 'suivi' && (
+        <div className="space-y-4">
+
+          {/* Switch canaux — mémorisé */}
+          {channels.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-xs font-semibold uppercase tracking-wider mr-1" style={{ color: '#4A5568' }}>Vue :</p>
+
+              {/* Total */}
+              <button
+                onClick={() => switchChannelTab('total')}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold transition"
+                style={{
+                  background: channelTab === 'total' ? 'rgba(6,142,234,0.15)' : 'rgba(255,255,255,0.03)',
+                  border:     `1px solid ${channelTab === 'total' ? 'rgba(6,142,234,0.35)' : '#1A2840'}`,
+                  color:      channelTab === 'total' ? '#21AAFA' : '#8B9BB4',
+                }}>
+                Tous canaux
+              </button>
+
+              {/* Un bouton par canal */}
+              {channels.map(ch => {
+                const active = channelTab === ch.id
+                return (
+                  <button
+                    key={ch.id}
+                    onClick={() => switchChannelTab(ch.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition"
+                    style={{
+                      background: active ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)',
+                      border:     `1px solid ${active ? '#6366F1' : '#1A2840'}`,
+                      color:      active ? '#A5B4FC' : '#8B9BB4',
+                    }}>
+                    <span className="text-sm leading-none">{ch.icon ?? '📋'}</span>
+                    {ch.name}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Header de contexte */}
+          {channels.length > 0 && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
+              style={{ background: 'rgba(6,142,234,0.05)', border: '1px solid rgba(6,142,234,0.1)' }}>
+              <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#10B981' }} />
+              <p className="text-xs" style={{ color: '#8B9BB4' }}>
+                {channelTab === 'total'
+                  ? <><span className="text-white font-semibold">Vue consolidée</span> — tous canaux cumulés</>
+                  : <><span className="text-white font-semibold">{activeChannel?.name ?? channelTab}</span> — données de ce canal uniquement</>
+                }
+              </p>
+            </div>
+          )}
+
+          {/* Dashboard — total ou canal spécifique
+              Pas de key= pour ne pas détruire/recréer le composant au switch de canal.
+              Les dashboards existants restent visibles ; l'état sauvegardé se recharge silencieusement. */}
+          <BilletterieTracking
+            channelFilter={channelTab === 'total' ? null : channelTab}
+          />
+        </div>
+      )}
 
       {/* ── Onglet Analyse année ── */}
       {tab === 'analyse' && (

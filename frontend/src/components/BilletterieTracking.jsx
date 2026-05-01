@@ -435,7 +435,7 @@ function ImportHistory({ editionId, onRollback, onSelectImport }) {
 }
 
 // ── Composant principal ───────────────────────────────────────────────────────
-export default function BilletterieTracking() {
+export default function BilletterieTracking({ channelFilter = null }) {
   const { activeEdition } = useEdition()
   const editionId = activeEdition?.id ?? null
 
@@ -458,14 +458,17 @@ export default function BilletterieTracking() {
   const [dragging,    setDragging]    = useState(false)
   const [histKey,     setHistKey]     = useState(0)     // force reload historique
 
-  // Charger l'état agrégé depuis la DB au montage + changement d'édition
+  // Charger l'état agrégé depuis la DB (filtré par canal si channelFilter actif)
   useEffect(() => {
     if (!editionId) return
-    fetch(`${API}/api/imports/${editionId}/state`)
+    const url = channelFilter
+      ? `${API}/api/imports/${editionId}/state?channel_id=${channelFilter}`
+      : `${API}/api/imports/${editionId}/state`
+    fetch(url)
       .then(r => r.ok ? r.json() : null)
       .then(s => { if (s?.nb_commandes > 0) setSavedState(s) })
       .catch(() => {})
-  }, [editionId, histKey])
+  }, [editionId, histKey, channelFilter])
 
   // Totaux : import courant OU état sauvegardé OU 0
   const activeData = data ?? savedState

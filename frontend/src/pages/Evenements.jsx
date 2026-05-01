@@ -7,7 +7,6 @@ import {
 import { useEventContext } from '../context/EventContext'
 import { createEvent, createEdition, EVENT_TYPES, RECOMMENDED_MODULES, EDITION_STATUS } from '../lib/models'
 import ChannelManager from '../components/ChannelManager'
-import EventThemeEditor from '../components/EventThemeEditor'
 
 const C = {
   bg:      '#05080F',
@@ -238,7 +237,6 @@ export default function Evenements() {
 
   const [showNewEvent,   setShowNewEvent]   = useState(false)
   const [newEditionFor,  setNewEditionFor]  = useState(null)
-  const [configTab,      setConfigTab]      = useState('canaux')
   // Sélecteurs indépendants pour le panneau de configuration
   const [cfgEventId,   setCfgEventId]   = useState(null)
   const [cfgEditionId, setCfgEditionId] = useState(null)
@@ -471,33 +469,13 @@ export default function Evenements() {
             </div>
           </div>
 
-          {/* Onglets */}
-          <div className="flex gap-1 px-5 pt-3" style={{ borderBottom: `1px solid ${C.border}` }}>
-            {[
-              { id: 'canaux', label: 'Canaux de distribution' },
-              { id: 'theme',  label: 'Direction artistique'   },
-            ].map(t => (
-              <button key={t.id} onClick={() => setConfigTab(t.id)}
-                className="px-3 pb-3 text-xs font-semibold transition-all"
-                style={{
-                  color: configTab === t.id ? '#21AAFA' : '#8B9BB4',
-                  borderBottom: configTab === t.id ? '2px solid #068EEA' : '2px solid transparent',
-                }}>
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Contenu */}
+          {/* Contenu — uniquement canaux */}
           <div className="p-5">
             {cfgEdition ? (
-              <>
-                {configTab === 'canaux' && <ChannelManager />}
-                {configTab === 'theme'  && <EventThemeEditor editionId={cfgEdition.id} />}
-              </>
+              <ChannelManager editionId={cfgEdition.id} />
             ) : (
               <p className="text-xs text-center py-4" style={{ color: '#4A5568' }}>
-                Sélectionnez une édition pour configurer.
+                Sélectionnez une édition pour configurer les canaux.
               </p>
             )}
           </div>

@@ -38,6 +38,14 @@ export function EventProvider({ children }) {
     refresh()
   }, [])
 
+  // Recharger canaux + thème quand l'édition active change
+  useEffect(() => {
+    if (!activeEditionId) return
+    setChannels(getChannels(activeEditionId))
+    setEditionSettings(getEditionSettings(activeEditionId))
+    setThemeState(getTheme(activeEditionId) ?? createEventTheme({ editionId: activeEditionId }))
+  }, [activeEditionId])
+
   function refresh() {
     const o = getOrganisations()
     const ev = getEvents()
@@ -144,7 +152,7 @@ export function EventProvider({ children }) {
       activeOrg, activeEvent, activeEdition, activeYear,
       setActiveOrgId, setActiveEventId, setActiveEditionId,
       addEvent, addEdition, updateEdition, refresh,
-      channels, addChannel, removeChannel,
+      channels, setChannels, addChannel, removeChannel,
       editionSettings, updateEditionSettings,
       theme, updateTheme,
 

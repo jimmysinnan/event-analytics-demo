@@ -1,18 +1,39 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { useEventContext } from '../context/EventContext'
-import { CHANNEL_TYPES } from '../lib/models'
+import { CHANNEL_TYPES, createChannel } from '../lib/models'
+import { getChannels, saveChannel, deleteChannel } from '../store/eventStore'
 
-export default function ChannelManager() {
-  const { channels, addChannel, removeChannel, activeEdition } = useEventContext()
-  const [adding, setAdding]   = useState(false)
-  const [form, setForm]       = useState({ name: '', type: 'weezevent' })
+export default function ChannelManager({ editionId: propEditionId }) {
+  const { activeEditionId, setChannels: setContextChannels } = useEventContext()
+  const editionId = propEditionId ?? activeEditionId
+
+  const [localChannels, setLocalChannels] = useState([])
+  const [adding, setAdding]               = useState(false)
+  const [form, setForm]                   = useState({ name: '', type: 'weezevent' })
+
+  // Charger les canaux de cette édition spécifique
+  useEffect(() => {
+    if (!editionId) return
+    setLocalChannels(getChannels(editionId))
+  }, [editionId])
 
   function handleAdd() {
-    if (!form.name.trim()) return
-    addChannel({ ...form })
+    if (!form.name.trim() || !editionId) return
+    const ch = saveChannel(createChannel({ ...form, editionId }))
+    const updated = getChannels(editionId)
+    setLocalChannels(updated)
+    // Mettre à jour le contexte si c'est l'édition active
+    if (editionId === activeEditionId) setContextChannels?.(updated)
     setForm({ name: '', type: 'weezevent' })
     setAdding(false)
+  }
+
+  function handleRemove(channelId) {
+    deleteChannel(channelId)
+    const updated = getChannels(editionId)
+    setLocalChannels(updated)
+    if (editionId === activeEditionId) setContextChannels?.(updated)
   }
 
   return (
@@ -97,16 +118,16 @@ export default function ChannelManager() {
       )}
 
       {/* Empty state */}
-      {channels.length === 0 && !adding && (
+      {localChannels.length === 0 && !adding && (
         <div className="py-6 text-center rounded-xl" style={{ border: '1px dashed #1A2840' }}>
           <p className="text-xs" style={{ color: '#4A5568' }}>
-            Aucun canal. Ajoutez Weezevent, Bizouk, CSE…
+            Aucun canal. Cliquez "Ajouter" pour créer Weezevent, Bizouk, CSE…
           </p>
         </div>
       )}
 
       {/* Channel list */}
-      {channels.map(ch => {
+      {localChannels.map(ch => {
         const type = CHANNEL_TYPES.find(t => t.id === ch.type)
         return (
           <div
@@ -121,7 +142,7 @@ export default function ChannelManager() {
               </div>
             </div>
             <button
-              onClick={() => removeChannel(ch.id)}
+              onClick={() => handleRemove(ch.id)}
               className="p-1.5 rounded-lg transition hover:bg-[#1A2840]"
               style={{ color: '#4A5568' }}
               title="Supprimer ce canal">

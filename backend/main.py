@@ -413,14 +413,32 @@ def remove_channel(channel_id: str):
 # ── Historique des imports ─────────────────────────────────────────────────────
 
 @app.get("/api/imports/{edition_id}")
-def list_imports(edition_id: str):
-    """Historique des imports pour une édition."""
-    return jsonify(get_imports(edition_id))
+def list_imports(edition_id: str, channel_id: str = None):
+    """Historique des imports pour une édition. channel_id optionnel pour filtrer."""
+    imports = get_imports(edition_id)
+    if channel_id:
+        imports = [i for i in imports if i.get('channel_id') == channel_id]
+    return jsonify(imports)
 
 
 @app.get("/api/imports/{edition_id}/state")
-def current_state(edition_id: str):
-    """État agrégé courant (après tous les imports + dédup) pour une édition."""
+def current_state(edition_id: str, channel_id: str = None):
+    """État agrégé courant. Si channel_id fourni, recalcule sur les imports de ce canal."""
+    if channel_id:
+        # Recalculer l'état pour ce canal uniquement
+        with get_db() as conn:
+            rows = conn.execute("""
+                SELECT raw_json FROM imports
+                WHERE edition_id = ? AND (channel_id = ? OR channel_id IS NULL)
+                AND status = 'active'
+                ORDER BY imported_at ASC
+            """, (edition_id, channel_id)).fetchall()
+        from database import _empty_state, _merge_state
+        state = _empty_state(edition_id)
+        for row in rows:
+            parsed = json.loads(row['raw_json'])
+            state = _merge_state(state, parsed, 'incremental')
+        return jsonify(state)
     return jsonify(get_state(edition_id))
 
 
