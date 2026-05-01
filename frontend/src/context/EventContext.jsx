@@ -15,8 +15,9 @@ import {
   saveEvent,
   getChannels, saveChannel as saveChannelStore, deleteChannel as deleteChannelStore,
   getEditionSettings, saveEditionSettings as saveSettingsStore,
+  getTheme, saveTheme as saveThemeStore,
 } from '../store/eventStore'
-import { createEvent, createEdition, RECOMMENDED_MODULES, createChannel, createEditionSettings } from '../lib/models'
+import { createEvent, createEdition, RECOMMENDED_MODULES, createChannel, createEditionSettings, createEventTheme } from '../lib/models'
 
 const EventContext = createContext(null)
 
@@ -29,6 +30,7 @@ export function EventProvider({ children }) {
   const [activeEditionId, setActiveEditionId] = useState(null)
   const [channels, setChannels] = useState([])
   const [editionSettings, setEditionSettings] = useState(null)
+  const [theme, setThemeState] = useState(null)
 
   // Init au montage
   useEffect(() => {
@@ -51,11 +53,20 @@ export function EventProvider({ children }) {
       if (active) setActiveEditionId(active.id)
     }
 
-    // Load channels for active edition
+    // Load channels, settings and theme for active edition
     if (activeEditionId) {
       setChannels(getChannels(activeEditionId))
       setEditionSettings(getEditionSettings(activeEditionId))
+      setThemeState(getTheme(activeEditionId) ?? createEventTheme({ editionId: activeEditionId }))
     }
+  }
+
+  function updateTheme(patch) {
+    const current = theme ?? createEventTheme({ editionId: activeEditionId })
+    const updated = { ...current, ...patch, editionId: activeEditionId }
+    saveThemeStore(activeEditionId, updated)
+    setThemeState(updated)
+    return updated
   }
 
   const activeOrg     = orgs.find(o => o.id === activeOrgId)     ?? orgs[0]     ?? null
@@ -135,6 +146,7 @@ export function EventProvider({ children }) {
       addEvent, addEdition, updateEdition, refresh,
       channels, addChannel, removeChannel,
       editionSettings, updateEditionSettings,
+      theme, updateTheme,
 
       // Rétrocompat useEdition()
       year:     activeYear,

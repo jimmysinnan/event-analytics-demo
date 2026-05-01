@@ -1,9 +1,8 @@
 import { useEdition } from '../context/EditionContext'
-import { getTheme } from '../store/eventStore'
 
 export default function EventBanner() {
-  const { activeEdition, activeEvent } = useEdition()
-  const theme = getTheme(activeEdition?.id)
+  // theme vient du contexte React — réactif immédiatement après modification
+  const { activeEdition, activeEvent, theme } = useEdition()
 
   if (!theme?.bannerOn || !activeEvent) return null
 

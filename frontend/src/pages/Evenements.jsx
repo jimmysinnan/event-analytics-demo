@@ -239,6 +239,13 @@ export default function Evenements() {
   const [showNewEvent,   setShowNewEvent]   = useState(false)
   const [newEditionFor,  setNewEditionFor]  = useState(null)
   const [configTab,      setConfigTab]      = useState('canaux')
+  // Sélecteurs indépendants pour le panneau de configuration
+  const [cfgEventId,   setCfgEventId]   = useState(null)
+  const [cfgEditionId, setCfgEditionId] = useState(null)
+
+  const cfgEvent   = events.find(e => e.id === (cfgEventId   ?? activeEvent?.id))   ?? activeEvent
+  const cfgEdition = editions.find(e => e.id === (cfgEditionId ?? activeEdition?.id)) ?? activeEdition
+  const cfgEditions = editions.filter(e => e.eventId === cfgEvent?.id).sort((a,b) => b.year - a.year)
 
   const visibleEvents = events.filter(e => !e.archived)
 
@@ -406,17 +413,69 @@ export default function Evenements() {
         </div>
       )}
 
-      {/* Panneau de configuration édition active */}
-      {activeEdition && (
+      {/* Panneau de configuration — avec sélecteurs événement + édition */}
+      {visibleEvents.length > 0 && (
         <div className="rounded-2xl overflow-hidden" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
-          <div className="flex items-center gap-3 px-5 py-3.5" style={{ borderBottom: `1px solid ${C.border}` }}>
-            <Settings2 size={14} style={{ color: '#6366F1' }} strokeWidth={1.8} />
-            <p className="text-sm font-semibold text-white">Configuration — {activeEdition.name}</p>
+
+          {/* Header + sélecteurs */}
+          <div className="px-5 py-4 space-y-3" style={{ borderBottom: `1px solid ${C.border}` }}>
+            <div className="flex items-center gap-2">
+              <Settings2 size={14} style={{ color: '#6366F1' }} strokeWidth={1.8} />
+              <p className="text-sm font-semibold text-white">Configuration</p>
+            </div>
+            {/* Sélecteur événement */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-2xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#4A5568', fontSize: '0.6rem' }}>
+                  Événement
+                </p>
+                <select
+                  className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none"
+                  style={{ background: '#111D33', border: '1px solid #1A2840', colorScheme: 'dark' }}
+                  value={cfgEvent?.id ?? ''}
+                  onChange={e => {
+                    setCfgEventId(e.target.value)
+                    setCfgEditionId(null) // reset édition quand on change d'événement
+                  }}>
+                  {visibleEvents.map(ev => (
+                    <option key={ev.id} value={ev.id}>{ev.name}</option>
+                  ))}
+                </select>
+              </div>
+              {/* Sélecteur édition */}
+              <div>
+                <p className="text-2xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#4A5568', fontSize: '0.6rem' }}>
+                  Édition
+                </p>
+                <select
+                  className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none"
+                  style={{ background: '#111D33', border: '1px solid #1A2840', colorScheme: 'dark' }}
+                  value={cfgEdition?.id ?? ''}
+                  onChange={e => {
+                    const ed = editions.find(x => x.id === e.target.value)
+                    if (ed) {
+                      setCfgEditionId(ed.id)
+                      // Mettre à jour l'édition active dans le contexte
+                      setActiveEditionId(ed.id)
+                      setActiveEventId(ed.eventId)
+                    }
+                  }}>
+                  {cfgEditions.map(ed => (
+                    <option key={ed.id} value={ed.id}>{ed.name}</option>
+                  ))}
+                  {cfgEditions.length === 0 && (
+                    <option value="">Aucune édition</option>
+                  )}
+                </select>
+              </div>
+            </div>
           </div>
-          <div className="flex gap-1 px-5 pt-4" style={{ borderBottom: `1px solid ${C.border}` }}>
+
+          {/* Onglets */}
+          <div className="flex gap-1 px-5 pt-3" style={{ borderBottom: `1px solid ${C.border}` }}>
             {[
-              { id: 'canaux',  label: 'Canaux de distribution' },
-              { id: 'theme',   label: 'Direction artistique' },
+              { id: 'canaux', label: 'Canaux de distribution' },
+              { id: 'theme',  label: 'Direction artistique'   },
             ].map(t => (
               <button key={t.id} onClick={() => setConfigTab(t.id)}
                 className="px-3 pb-3 text-xs font-semibold transition-all"
@@ -428,9 +487,19 @@ export default function Evenements() {
               </button>
             ))}
           </div>
+
+          {/* Contenu */}
           <div className="p-5">
-            {configTab === 'canaux' && <ChannelManager />}
-            {configTab === 'theme'  && <EventThemeEditor editionId={activeEdition.id} />}
+            {cfgEdition ? (
+              <>
+                {configTab === 'canaux' && <ChannelManager />}
+                {configTab === 'theme'  && <EventThemeEditor editionId={cfgEdition.id} />}
+              </>
+            ) : (
+              <p className="text-xs text-center py-4" style={{ color: '#4A5568' }}>
+                Sélectionnez une édition pour configurer.
+              </p>
+            )}
           </div>
         </div>
       )}
