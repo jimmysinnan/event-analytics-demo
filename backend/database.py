@@ -118,13 +118,239 @@ def init_db():
 
         CREATE INDEX IF NOT EXISTS idx_channels_edition ON channels(edition_id);
 
+        -- Données consommation / profil client par édition (depuis upload fichier conso)
+        CREATE TABLE IF NOT EXISTS conso_state (
+            edition_id      TEXT PRIMARY KEY,
+            kpi_json        TEXT,       -- résultat kpi_conso() : ca_ht, n_clients, top_familles, top_pdv, top_articles
+            ca_horaire_json TEXT,       -- résultat ca_horaire() : [{heure, ca_ht}]
+            profil_json     TEXT,       -- résultat profil_client() : {age, genre}
+            filename        TEXT,
+            updated_at      TEXT NOT NULL
+        );
+
+        -- KPIs agrégés par édition (historique multi-années)
+        -- Remplace les données statiques hardcodées dans main.py
+        CREATE TABLE IF NOT EXISTS edition_analytics (
+            id              TEXT PRIMARY KEY,
+            year            INTEGER NOT NULL UNIQUE,
+            edition_name    TEXT,
+            ca_conso        REAL,           -- CA consommation bars/PDV
+            ca_billet       REAL,           -- CA billetterie
+            ca_total        REAL,           -- CA global (conso + billet)
+            festivaliers    INTEGER,        -- fréquentation totale
+            clients         INTEGER,        -- clients uniques (consommation)
+            transactions    INTEGER,        -- nb transactions consommation
+            panier_conso    REAL,           -- panier moyen consommation
+            invitations_total     INTEGER,
+            invitations_valeur    REAL,
+            invitations_entrees   INTEGER,
+            invitations_pct_freq  REAL,
+            affluence_json        TEXT,     -- JSON {samedi, dimanche, total}
+            familles_json         TEXT,     -- JSON [{name, ca}, ...]
+            pass_culture_json     TEXT,     -- JSON {ventes, ca}
+            notes                 TEXT,
+            created_at            TEXT NOT NULL,
+            updated_at            TEXT NOT NULL
+        );
+
         """)
+
+    # ── Migrations safe (colonnes ajoutées après la création initiale) ──────────
+    _safe_alter("""ALTER TABLE edition_analytics ADD COLUMN profil_json TEXT""")
+
+    # ── Seed des données historiques 2023-2025 si absentes ────────────────────
+    _seed_edition_analytics()
+
+
+def _safe_alter(sql: str):
+    """Exécute un ALTER TABLE sans planter si la colonne existe déjà."""
+    try:
+        with get_db() as conn:
+            conn.execute(sql)
+    except Exception:
+        pass
 
     try:
         with get_db() as conn:
             conn.execute("ALTER TABLE imports ADD COLUMN channel_id TEXT")
     except Exception:
         pass  # Column already exists
+
+
+def _seed_edition_analytics():
+    """Insère les données historiques 2023-2025 si la table est vide."""
+    now = datetime.utcnow().isoformat()
+    seed = [
+        {
+            'id': 'seed-2023', 'year': 2023, 'edition_name': 'Édition 2023',
+            'ca_conso': 888537, 'ca_billet': None, 'ca_total': None,
+            'festivaliers': None, 'clients': 11735, 'transactions': 71547,
+            'panier_conso': 75.7,
+            'invitations_total': None, 'invitations_valeur': None,
+            'invitations_entrees': None, 'invitations_pct_freq': None,
+            'affluence_json': None,
+            'familles_json': None,
+            'pass_culture_json': json.dumps({'ventes': 1259, 'ca': 188850}),
+            'notes': 'Données issues des fichiers Excel 2023',
+        },
+        {
+            'id': 'seed-2024', 'year': 2024, 'edition_name': 'Édition 2024',
+            'ca_conso': 742968, 'ca_billet': 1019418, 'ca_total': 1762386,
+            'festivaliers': 20346, 'clients': 9177, 'transactions': 55096,
+            'panier_conso': 80.9,
+            'invitations_total': None, 'invitations_valeur': None,
+            'invitations_entrees': None, 'invitations_pct_freq': None,
+            'affluence_json': json.dumps({'samedi': 9762, 'dimanche': 10584, 'total': 20346}),
+            'familles_json': None,
+            'pass_culture_json': json.dumps({'ventes': 1775, 'ca': 225320}),
+            'notes': 'Données issues des fichiers Excel 2024',
+        },
+        {
+            'id': 'seed-2025', 'year': 2025, 'edition_name': 'Édition 2025',
+            'ca_conso': 496585, 'ca_billet': 929695, 'ca_total': 1426280,
+            'festivaliers': 16810, 'clients': 7251, 'transactions': 32523,
+            'panier_conso': 68.5,
+            'invitations_total': 1570, 'invitations_valeur': 266590,
+            'invitations_entrees': 5240, 'invitations_pct_freq': 31.2,
+            'affluence_json': json.dumps({'samedi': 8289, 'dimanche': 8521, 'total': 16810}),
+            'familles_json': json.dumps([
+                {'name': 'Champagne', 'ca': 178857},
+                {'name': 'Bières',    'ca': 59005},
+                {'name': 'Soft',      'ca': 44386},
+                {'name': 'Cocktail',  'ca': 33924},
+                {'name': 'Food',      'ca': 27581},
+                {'name': 'Vodka',     'ca': 18775},
+                {'name': 'Hard',      'ca': 17678},
+            ]),
+            'pass_culture_json': json.dumps({'ventes': 516, 'ca': 61920}),
+            'notes': 'Données issues des fichiers Excel 2025',
+        },
+    ]
+    with get_db() as conn:
+        for row in seed:
+            conn.execute("""
+                INSERT OR IGNORE INTO edition_analytics
+                  (id, year, edition_name, ca_conso, ca_billet, ca_total,
+                   festivaliers, clients, transactions, panier_conso,
+                   invitations_total, invitations_valeur, invitations_entrees, invitations_pct_freq,
+                   affluence_json, familles_json, pass_culture_json, notes, created_at, updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                row['id'], row['year'], row['edition_name'],
+                row['ca_conso'], row['ca_billet'], row['ca_total'],
+                row['festivaliers'], row['clients'], row['transactions'], row['panier_conso'],
+                row['invitations_total'], row['invitations_valeur'],
+                row['invitations_entrees'], row['invitations_pct_freq'],
+                row['affluence_json'], row['familles_json'], row['pass_culture_json'],
+                row['notes'], now, now,
+            ))
+
+
+# ── CONSO STATE ───────────────────────────────────────────────────────────────
+
+def save_conso_state(edition_id: str, kpi: dict, ca_horaire: list, profil: dict, filename: str = '') -> None:
+    """Persiste les KPIs consommation/profil client pour une édition."""
+    now = datetime.utcnow().isoformat()
+    with get_db() as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO conso_state
+              (edition_id, kpi_json, ca_horaire_json, profil_json, filename, updated_at)
+            VALUES (?,?,?,?,?,?)
+        """, (
+            edition_id,
+            json.dumps(kpi,        ensure_ascii=False),
+            json.dumps(ca_horaire, ensure_ascii=False),
+            json.dumps(profil,     ensure_ascii=False),
+            filename,
+            now,
+        ))
+
+
+def get_conso_state(edition_id: str) -> dict | None:
+    """Retourne les données conso/profil stockées pour une édition, ou None."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM conso_state WHERE edition_id = ?", (edition_id,)
+        ).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    for key in ('kpi_json', 'ca_horaire_json', 'profil_json'):
+        field = key.replace('_json', '')
+        try:
+            d[field] = json.loads(d[key]) if d.get(key) else ({} if field != 'ca_horaire' else [])
+        except Exception:
+            d[field] = {} if field != 'ca_horaire' else []
+        del d[key]
+    return d
+
+
+# ── EDITION ANALYTICS ──────────────────────────────────────────────────────────
+
+_JSON_FIELDS = ('affluence_json', 'familles_json', 'pass_culture_json', 'profil_json')
+
+
+def get_all_edition_analytics() -> list:
+    """Retourne toutes les éditions historiques, triées par année."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM edition_analytics ORDER BY year ASC"
+        ).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        for key in _JSON_FIELDS:
+            field = key.replace('_json', '')
+            if d.get(key):
+                try:
+                    d[field] = json.loads(d[key])
+                except Exception:
+                    d[field] = None
+            else:
+                d[field] = None
+            if key in d:
+                del d[key]
+        result.append(d)
+    return result
+
+
+def upsert_edition_analytics(year: int, data: dict) -> str:
+    """Crée ou met à jour les KPIs d'une édition par année.
+    Accepte profil = { genre: [{name, pct, n}], tranches: [{age, pct, n}], comportement: [...] }
+    """
+    now = datetime.utcnow().isoformat()
+    with get_db() as conn:
+        existing = conn.execute(
+            "SELECT id FROM edition_analytics WHERE year = ?", (year,)
+        ).fetchone()
+        eid = existing['id'] if existing else f"ea-{year}-{str(uuid.uuid4())[:8]}"
+
+        conn.execute("""
+            INSERT OR REPLACE INTO edition_analytics
+              (id, year, edition_name, ca_conso, ca_billet, ca_total,
+               festivaliers, clients, transactions, panier_conso,
+               invitations_total, invitations_valeur, invitations_entrees, invitations_pct_freq,
+               affluence_json, familles_json, pass_culture_json, profil_json,
+               notes, created_at, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+              COALESCE((SELECT created_at FROM edition_analytics WHERE year=?), ?),
+              ?)
+        """, (
+            eid, year,
+            data.get('edition_name', f'Édition {year}'),
+            data.get('ca_conso'), data.get('ca_billet'), data.get('ca_total'),
+            data.get('festivaliers'), data.get('clients'), data.get('transactions'),
+            data.get('panier_conso'),
+            data.get('invitations_total'), data.get('invitations_valeur'),
+            data.get('invitations_entrees'), data.get('invitations_pct_freq'),
+            json.dumps(data['affluence'],    ensure_ascii=False) if data.get('affluence')    else None,
+            json.dumps(data['familles'],     ensure_ascii=False) if data.get('familles')     else None,
+            json.dumps(data['pass_culture'], ensure_ascii=False) if data.get('pass_culture') else None,
+            json.dumps(data['profil'],       ensure_ascii=False) if data.get('profil')       else None,
+            data.get('notes'),
+            year, now, now,
+        ))
+    return eid
 
 
 # ── IMPORTS ────────────────────────────────────────────────────────────────────

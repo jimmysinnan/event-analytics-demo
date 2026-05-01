@@ -3,7 +3,7 @@ Baccha Analytics — FastAPI backend
 """
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse, Response
+from fastapi.responses import JSONResponse, FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import pandas as pd
 import io
@@ -13,6 +13,7 @@ import os
 import uuid
 from datetime import datetime
 from services.kpi_engine import kpi_conso, kpi_billetterie, ca_horaire, profil_client
+from services.ai_reporter import generate_ai_report_stream
 from services.pdf_generator import generate_global, generate_pdv, generate_profil
 from services.import_parser import parse_import, detect_source, SOURCE_LABELS
 from services.file_reader import read_file, SUPPORTED_EXTENSIONS
@@ -20,7 +21,9 @@ from database import (
     init_db, save_import, get_imports, rollback_import,
     get_state, dedup_import, get_db,
     save_live_snapshot, get_live_snapshots, rollback_live_snapshot,
-    save_channel, get_channels, delete_channel
+    save_channel, get_channels, delete_channel,
+    get_all_edition_analytics, upsert_edition_analytics,
+    save_conso_state, get_conso_state,
 )
 
 app = FastAPI(title="Event Analytics Demo API", version="2.0.0")
@@ -81,11 +84,14 @@ def list_formats():
 
 
 @app.post("/api/upload/conso")
-async def upload_conso(file: UploadFile = File(...)):
+async def upload_conso(
+    file: UploadFile = File(...),
+    edition_id: str = "",
+):
     """
     Upload du fichier de consommation (BDD Weezpay).
-    Accepte tous les formats supportés (xlsx, xls, csv, parquet…)
-    Cherche l'onglet BDD ou JDD Vente si Excel multi-onglets.
+    Si edition_id est fourni, les KPIs calculés sont persistés en DB
+    pour alimenter les rapports IA.
     """
     contents = await file.read()
     try:
@@ -93,7 +99,7 @@ async def upload_conso(file: UploadFile = File(...)):
     except ValueError as e:
         raise HTTPException(400, detail=str(e))
 
-    # Si Excel multi-onglets, chercher l'onglet BDD ou JDD Vente
+    sheet = None
     fname = (file.filename or '').lower()
     if fname.endswith(('.xlsx', '.xlsm', '.xls')):
         try:
@@ -107,14 +113,25 @@ async def upload_conso(file: UploadFile = File(...)):
                 df = xl.parse(sheet)
         except Exception:
             pass
+
+    kpi_result    = kpi_conso(df)
+    horaire       = ca_horaire(df)
+    profil        = profil_client(df)
+
+    # Persistance en DB si edition_id fourni
+    if edition_id:
+        save_conso_state(edition_id, kpi_result, horaire, profil, file.filename or '')
+
     result = {
-        'kpi':        kpi_conso(df),
-        'ca_horaire': ca_horaire(df),
-        'profil':     profil_client(df),
+        'kpi':        kpi_result,
+        'ca_horaire': horaire,
+        'profil':     profil,
+        '_saved':     bool(edition_id),
         'meta': {
-            'rows':   int(len(df)),
-            'sheet':  sheet,
-            'file':   file.filename,
+            'rows':       int(len(df)),
+            'sheet':      sheet,
+            'file':       file.filename,
+            'edition_id': edition_id or None,
         }
     }
     return JSONResponse(content=jsonify(result))
@@ -152,40 +169,82 @@ async def upload_billetterie(file: UploadFile = File(...)):
 @app.get("/api/data/static")
 def static_data():
     """
-    Retourne les données statiques déjà extraites des fichiers Excel
-    pour alimenter le frontend sans upload (données 2023-2025 pré-chargées).
+    Retourne les données historiques depuis la table edition_analytics.
+    Remplace les données hardcodées — modifiable via POST /api/editions/analytics.
     """
-    return jsonify({
-        'editions': [
-            { 'year': 2023, 'ca_conso': 888537, 'festivaliers': None,  'ca_billet': None,    'clients': 11735, 'transactions': 71547, 'panier': 75.7 },
-            { 'year': 2024, 'ca_conso': 742968, 'festivaliers': 20346, 'ca_billet': 1019418, 'clients': 9177,  'transactions': 55096, 'panier': 80.9 },
-            { 'year': 2025, 'ca_conso': 496585, 'festivaliers': 16810, 'ca_billet': 929695,  'clients': 7251,  'transactions': 32523, 'panier': 68.5 },
-        ],
-        'familles_2025': [
-            { 'name': 'Champagne', 'ca': 178857 },
-            { 'name': 'Bières',    'ca': 59005  },
-            { 'name': 'Soft',      'ca': 44386  },
-            { 'name': 'Cocktail',  'ca': 33924  },
-            { 'name': 'Food',      'ca': 27581  },
-            { 'name': 'Vodka',     'ca': 18775  },
-            { 'name': 'Hard',      'ca': 17678  },
-        ],
-        'pass_culture': [
-            { 'year': 2023, 'ventes': 1259, 'ca': 188850 },
-            { 'year': 2024, 'ventes': 1775, 'ca': 225320 },
-            { 'year': 2025, 'ventes': 516,  'ca': 61920  },
-        ],
-        'invitations_2025': {
-            'total_billets':  1570,
-            'valeur':         266590,
-            'entrees_reelles':5240,
-            'pct_frequentation': 31.2,
-        },
-        'affluence': {
-            '2024': { 'samedi': 9762, 'dimanche': 10584, 'total': 20346 },
-            '2025': { 'samedi': 8289, 'dimanche': 8521,  'total': 16810 },
+    analytics = get_all_edition_analytics()
+
+    # Rétrocompatibilité : format attendu par le frontend existant
+    editions = [
+        {
+            'year':         a['year'],
+            'ca_conso':     a.get('ca_conso'),
+            'ca_billet':    a.get('ca_billet'),
+            'ca_total':     a.get('ca_total'),
+            'festivaliers': a.get('festivaliers'),
+            'clients':      a.get('clients'),
+            'transactions': a.get('transactions'),
+            'panier':       a.get('panier_conso'),
         }
+        for a in analytics
+    ]
+
+    # Familles produits de la dernière édition disponible
+    familles = None
+    for a in reversed(analytics):
+        if a.get('familles'):
+            familles = a['familles']
+            break
+
+    # Pass culture par année
+    pass_culture = [
+        {'year': a['year'], **a['pass_culture']}
+        for a in analytics if a.get('pass_culture')
+    ]
+
+    # Invitations de la dernière édition avec données
+    invitations = None
+    for a in reversed(analytics):
+        if a.get('invitations_total'):
+            invitations = {
+                'total_billets':     a['invitations_total'],
+                'valeur':            a.get('invitations_valeur'),
+                'entrees_reelles':   a.get('invitations_entrees'),
+                'pct_frequentation': a.get('invitations_pct_freq'),
+            }
+            break
+
+    # Affluence par année
+    affluence = {
+        str(a['year']): a['affluence']
+        for a in analytics if a.get('affluence')
+    }
+
+    return JSONResponse(content={
+        'editions':         editions,
+        'familles_2025':    familles,
+        'pass_culture':     pass_culture,
+        'invitations_2025': invitations,
+        'affluence':        affluence,
+        '_source':          'database',
     })
+
+
+@app.get("/api/editions/analytics")
+def list_edition_analytics():
+    """Retourne toutes les éditions avec leurs KPIs historiques."""
+    return JSONResponse(content=get_all_edition_analytics())
+
+
+@app.post("/api/editions/analytics")
+async def save_edition_analytics(request: Request):
+    """Crée ou met à jour les KPIs d'une édition. Body JSON : { year, ca_conso, ... }"""
+    body = await request.json()
+    year = body.get('year')
+    if not year:
+        raise HTTPException(400, "Le champ 'year' est obligatoire")
+    eid = upsert_edition_analytics(int(year), body)
+    return JSONResponse(content={'ok': True, 'id': eid})
 
 
 # ── PDF endpoints ──────────────────────────────────────────────────────────────
@@ -523,9 +582,14 @@ def download_report(edition_id: str, edition_name: str = "Édition"):
 # ── Rapports IA — Claude Sonnet 4.6 ───────────────────────────────────────────
 
 def _get_kpis_for_edition(edition_id: str) -> tuple:
-    """Retourne (kpis, state) pour une édition."""
+    """
+    Retourne (kpis, state) pour une édition.
+    Agrège : billetterie (imports) + consommation/profil (conso_state) + historique (edition_analytics).
+    """
     state = get_state(edition_id)
-    kpis  = None
+    kpis  = {}
+
+    # ── Billetterie : KPIs avancés du dernier import actif ────────────────────
     with get_db() as conn:
         row = conn.execute("""
             SELECT raw_json FROM imports
@@ -533,37 +597,53 @@ def _get_kpis_for_edition(edition_id: str) -> tuple:
             ORDER BY imported_at DESC LIMIT 1
         """, (edition_id,)).fetchone()
     if row:
-        kpis = json.loads(row['raw_json']).get('kpis_avances')
-    return kpis or {}, state
+        kpis = json.loads(row['raw_json']).get('kpis_avances') or {}
+
+    # ── Historique multi-éditions ─────────────────────────────────────────────
+    hist = get_all_edition_analytics()
+    kpis['historique_editions'] = hist
+
+    # ── Consommation + Profil client ──────────────────────────────────────────
+    # Source 1 : conso_state (upload fichier conso avec edition_id)
+    conso = get_conso_state(edition_id)
+
+    # Source 2 : profil depuis edition_analytics (peut venir du formulaire ou d'une autre source)
+    # On cherche d'abord dans edition_analytics de l'année courante si disponible
+    profil_from_analytics = None
+    if hist:
+        # Essayer de trouver l'édition correspondant à l'edition_id actif
+        # On prend la plus récente si pas de correspondance directe
+        for h in reversed(hist):
+            if h.get('profil'):
+                profil_from_analytics = h['profil']
+                break
+
+    # Fusion : conso_state a la priorité sur edition_analytics pour les données fraîches
+    profil_merged = {}
+    if profil_from_analytics:
+        profil_merged.update(profil_from_analytics)
+    if conso and conso.get('profil'):
+        # Les données Weezpay (genre, age depuis colonnes) enrichissent si présentes
+        profil_merged.update({k: v for k, v in conso['profil'].items() if v})
+
+    kpis['module_conso'] = {
+        'disponible':          bool(conso),
+        'kpi':                 conso.get('kpi', {})       if conso else {},
+        'ca_horaire':          conso.get('ca_horaire', []) if conso else [],
+        'profil':              profil_merged,
+        'profil_disponible':   bool(profil_merged),
+        'fichier':             conso.get('filename', '')  if conso else '',
+        'mis_a_jour':          conso.get('updated_at', '') if conso else '',
+    }
+
+    return kpis, state
 
 
 @app.post("/api/ai/report/{edition_id}")
-async def ai_report(
-    edition_id: str,
-    request: Request,
-    report_type: str = "executive",
-    edition_name: str = "Édition",
-):
-    """
-    Génère un rapport IA (Claude Sonnet 4.6).
-    report_type : executive | recommandations | pertes_invisibles | partenaires
-    La clé API peut être passée dans le body JSON { api_key: "sk-ant-..." }
-    ou configurée dans backend/.env
-    """
-    body = {}
-    try:
-        body = await request.json()
-    except Exception:
-        pass
+async def ai_report(edition_id: str):
+    """Endpoint legacy — utiliser /stream à la place."""
+    return JSONResponse(content={"error": "Utiliser /api/ai/report/{edition_id}/stream"})
 
-    api_key = body.get('api_key', '')
-    kpis, state = _get_kpis_for_edition(edition_id)
-
-    result = generate_ai_report(report_type, kpis, state, edition_name)
-    return jsonify(result)
-
-
-from fastapi.responses import StreamingResponse
 
 @app.post("/api/ai/report/{edition_id}/stream")
 async def ai_report_stream(
@@ -582,11 +662,13 @@ async def ai_report_stream(
     except Exception:
         pass
 
-    api_key = body.get('api_key', '')
+    api_key    = body.get('api_key', '')
+    image_b64  = body.get('image_b64') or None
+    image_mime = body.get('image_mime') or None
     kpis, state = _get_kpis_for_edition(edition_id)
 
     return StreamingResponse(
-        generate_ai_report_stream(report_type, kpis, state, edition_name, api_key),
+        generate_ai_report_stream(report_type, kpis, state, edition_name, api_key, image_b64, image_mime),
         media_type='text/event-stream',
         headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
     )

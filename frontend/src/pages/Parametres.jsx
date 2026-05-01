@@ -1,35 +1,38 @@
 import { useState, useRef, useCallback } from 'react'
 import {
   Upload, CheckCircle, AlertCircle, FileSpreadsheet,
-  Trash2, RefreshCw, Database, Zap, HardDrive, Info
+  Trash2, RefreshCw, Database, Zap, HardDrive, Info, Link, AlertTriangle
 } from 'lucide-react'
 import SectionCard from '../components/ui/SectionCard'
 import { fmt } from '../lib/format'
+import { useEdition } from '../context/EditionContext'
 
 const SLOTS = [
   {
-    id:    'conso',
-    label: 'Données de consommation',
-    sub:   'Export Weezpay — onglet BDD ou JDD Vente',
-    icon:  Database,
-    color: '#068EEA',
-    hint:  'export_consommation_20XX.xlsx · export_ventes_20XX.xlsx',
+    id:       'conso',
+    label:    'Données de consommation',
+    sub:      'Export Weezpay — onglet BDD ou JDD Vente',
+    icon:     Database,
+    color:    '#068EEA',
+    hint:     'export_consommation_20XX.xlsx · export_ventes_20XX.xlsx',
     endpoint: '/api/upload/conso',
-    modules: ['Consommation', 'Profil Client', 'Invitations', 'Stocks'],
+    modules:  ['Consommation', 'Profil Client', 'Invitations', 'Stocks'],
+    needsEdition: true,
   },
   {
-    id:    'billetterie',
-    label: 'TDB Billetterie',
-    sub:   'Fichier TDB billetterie 20XX.xlsx',
-    icon:  FileSpreadsheet,
-    color: '#F59E0B',
-    hint:  'TDB billetterie 2025.xlsx — tous onglets requis',
+    id:       'billetterie',
+    label:    'TDB Billetterie',
+    sub:      'Fichier TDB billetterie 20XX.xlsx',
+    icon:     FileSpreadsheet,
+    color:    '#F59E0B',
+    hint:     'TDB billetterie 2025.xlsx — tous onglets requis',
     endpoint: '/api/upload/billetterie',
-    modules: ['Billetterie', 'Invitations', 'Vue Globale'],
+    modules:  ['Billetterie', 'Invitations', 'Vue Globale'],
+    needsEdition: false,
   },
 ]
 
-function FileSlot({ slot, state, onDrop, onRemove }) {
+function FileSlot({ slot, state, onDrop, onRemove, editionName, editionId }) {
   const inputRef = useRef(null)
   const [dragging, setDragging] = useState(false)
   const { icon: Icon, color } = slot
@@ -41,7 +44,9 @@ function FileSlot({ slot, state, onDrop, onRemove }) {
     if (file) onDrop(slot.id, file)
   }, [slot.id, onDrop])
 
-  const status = state?.status ?? 'idle'
+  const status    = state?.status ?? 'idle'
+  const isSaved   = state?.result?._saved === true
+  const noEdition = slot.needsEdition && !editionId
 
   return (
     <div
@@ -74,6 +79,32 @@ function FileSlot({ slot, state, onDrop, onRemove }) {
           </button>
         )}
       </div>
+
+      {/* Badge édition active (slot conso uniquement) */}
+      {slot.needsEdition && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+          style={{
+            background: editionId ? 'rgba(6,142,234,0.08)' : 'rgba(245,158,11,0.08)',
+            border:     `1px solid ${editionId ? 'rgba(6,142,234,0.2)' : 'rgba(245,158,11,0.2)'}`,
+          }}>
+          {editionId ? (
+            <>
+              <Link size={12} style={{ color: '#068EEA' }} strokeWidth={2} />
+              <span style={{ color: '#8B9BB4' }}>Sera lié à l'édition :</span>
+              <span className="font-semibold" style={{ color: '#21AAFA' }}>{editionName}</span>
+              <span className="ml-auto text-2xs px-1.5 py-0.5 rounded-full font-medium"
+                style={{ background: 'rgba(6,142,234,0.15)', color: '#068EEA' }}>
+                Sauvegarde IA activée
+              </span>
+            </>
+          ) : (
+            <>
+              <AlertTriangle size={12} style={{ color: '#F59E0B' }} strokeWidth={2} />
+              <span style={{ color: '#F59E0B' }}>Aucune édition sélectionnée — les données ne seront pas liées</span>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Drop zone */}
       {!state?.file ? (
@@ -115,12 +146,27 @@ function FileSlot({ slot, state, onDrop, onRemove }) {
           <p className="text-xs text-[#8B9BB4]">Traitement en cours…</p>
         </div>
       )}
+
       {status === 'success' && state.result && (
-        <div className="rounded-xl p-3" style={{ background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.2)' }}>
-          <div className="flex items-center gap-2 mb-2">
-            <CheckCircle size={14} className="text-[#10B981]" strokeWidth={2} />
-            <p className="text-xs font-semibold text-[#10B981]">Importé avec succès</p>
+        <div className="rounded-xl p-3 space-y-3"
+          style={{ background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.2)' }}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CheckCircle size={14} className="text-[#10B981]" strokeWidth={2} />
+              <p className="text-xs font-semibold text-[#10B981]">Importé avec succès</p>
+            </div>
+            {/* Badge persistance IA */}
+            {slot.needsEdition && (
+              <span className="text-2xs px-2 py-0.5 rounded-full font-semibold"
+                style={isSaved
+                  ? { background: 'rgba(6,142,234,0.15)', color: '#21AAFA', border: '1px solid rgba(6,142,234,0.25)' }
+                  : { background: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.2)' }
+                }>
+                {isSaved ? `Sauvegardé · ${editionName}` : 'Non lié à une édition'}
+              </span>
+            )}
           </div>
+
           <div className="grid grid-cols-2 gap-2">
             {state.result.meta && (
               <>
@@ -129,8 +175,8 @@ function FileSlot({ slot, state, onDrop, onRemove }) {
                   <p className="num text-sm font-bold text-white">{fmt.number(state.result.meta.rows)}</p>
                 </div>
                 <div>
-                  <p className="text-2xs text-[#4A5568]">Onglet</p>
-                  <p className="text-xs font-medium text-white truncate">{state.result.meta.sheet}</p>
+                  <p className="text-2xs text-[#4A5568]">Onglet lu</p>
+                  <p className="text-xs font-medium text-white truncate">{state.result.meta.sheet ?? '—'}</p>
                 </div>
               </>
             )}
@@ -143,6 +189,14 @@ function FileSlot({ slot, state, onDrop, onRemove }) {
                 <div>
                   <p className="text-2xs text-[#4A5568]">Clients uniques</p>
                   <p className="num text-sm font-bold text-white">{fmt.number(state.result.kpi.n_clients)}</p>
+                </div>
+                <div>
+                  <p className="text-2xs text-[#4A5568]">Transactions</p>
+                  <p className="num text-sm font-bold text-white">{fmt.number(state.result.kpi.n_transac)}</p>
+                </div>
+                <div>
+                  <p className="text-2xs text-[#4A5568]">Panier moyen</p>
+                  <p className="num text-sm font-bold text-white">{fmt.currency(state.result.kpi.panier_moyen)}</p>
                 </div>
               </>
             )}
@@ -159,8 +213,43 @@ function FileSlot({ slot, state, onDrop, onRemove }) {
               </>
             )}
           </div>
+
+          {/* Top familles si dispo */}
+          {state.result.kpi?.top_familles && Object.keys(state.result.kpi.top_familles).length > 0 && (
+            <div className="pt-2 border-t border-[#1A2840]">
+              <p className="text-2xs text-[#4A5568] mb-1.5">Top familles produits</p>
+              <div className="flex flex-wrap gap-1.5">
+                {Object.entries(state.result.kpi.top_familles)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 5)
+                  .map(([fam, ca]) => (
+                    <span key={fam} className="text-2xs px-2 py-0.5 rounded-full"
+                      style={{ background: 'rgba(6,142,234,0.1)', color: '#21AAFA', border: '1px solid rgba(6,142,234,0.15)' }}>
+                      {fam} · {fmt.currency(ca)}
+                    </span>
+                  ))
+                }
+              </div>
+            </div>
+          )}
+
+          {/* Profil client si dispo */}
+          {state.result.profil?.genre && Object.keys(state.result.profil.genre).length > 0 && (
+            <div className="pt-2 border-t border-[#1A2840]">
+              <p className="text-2xs text-[#4A5568] mb-1.5">Profil client détecté</p>
+              <div className="flex gap-2">
+                {Object.entries(state.result.profil.genre).map(([g, n]) => (
+                  <span key={g} className="text-2xs px-2 py-0.5 rounded-full"
+                    style={{ background: 'rgba(139,92,246,0.1)', color: '#A78BFA', border: '1px solid rgba(139,92,246,0.15)' }}>
+                    {g} · {fmt.number(n)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
+
       {status === 'error' && (
         <div className="flex items-center gap-2 p-3 rounded-xl"
           style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)' }}>
@@ -176,8 +265,8 @@ function FileSlot({ slot, state, onDrop, onRemove }) {
           <span key={m} className="text-2xs px-2 py-0.5 rounded-full"
             style={{
               background: status === 'success' ? `${color}15` : 'rgba(74,85,104,0.2)',
-              color: status === 'success' ? color : '#4A5568',
-              border: `1px solid ${status === 'success' ? `${color}30` : 'transparent'}`,
+              color:      status === 'success' ? color : '#4A5568',
+              border:     `1px solid ${status === 'success' ? `${color}30` : 'transparent'}`,
             }}>
             {m}
           </span>
@@ -188,22 +277,31 @@ function FileSlot({ slot, state, onDrop, onRemove }) {
 }
 
 export default function Parametres() {
-  const [states, setStates] = useState({})
+  const [states, setStates]   = useState({})
+  const { activeEdition }     = useEdition()
+  const editionId   = activeEdition?.id   ?? ''
+  const editionName = activeEdition?.name ?? ''
 
   const handleDrop = useCallback(async (id, file) => {
     setStates(s => ({ ...s, [id]: { file, status: 'loading' } }))
     const slot = SLOTS.find(s => s.id === id)
     const form = new FormData()
     form.append('file', file)
+
+    let url = `http://localhost:8001${slot.endpoint}`
+    if (id === 'conso' && editionId) {
+      url += `?edition_id=${encodeURIComponent(editionId)}`
+    }
+
     try {
-      const res = await fetch(`http://localhost:8001${slot.endpoint}`, { method: 'POST', body: form })
+      const res = await fetch(url, { method: 'POST', body: form })
       if (!res.ok) throw new Error(`Erreur ${res.status}`)
       const result = await res.json()
       setStates(s => ({ ...s, [id]: { file, status: 'success', result } }))
     } catch (e) {
       setStates(s => ({ ...s, [id]: { file, status: 'error', error: e.message } }))
     }
-  }, [])
+  }, [editionId])
 
   const handleRemove = useCallback(id => {
     setStates(s => ({ ...s, [id]: undefined }))
@@ -214,12 +312,56 @@ export default function Parametres() {
   return (
     <div className="space-y-6 animate-slide-up max-w-4xl">
 
+      {/* Bandeau édition active */}
+      <div className="p-4 rounded-2xl flex items-center justify-between gap-4"
+        style={{
+          background: editionId ? 'rgba(99,102,241,0.07)' : 'rgba(245,158,11,0.07)',
+          border:     `1px solid ${editionId ? 'rgba(99,102,241,0.2)' : 'rgba(245,158,11,0.2)'}`,
+        }}>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{ background: editionId ? 'rgba(99,102,241,0.15)' : 'rgba(245,158,11,0.12)' }}>
+            {editionId
+              ? <Link size={15} style={{ color: '#A5B4FC' }} strokeWidth={2} />
+              : <AlertTriangle size={15} style={{ color: '#F59E0B' }} strokeWidth={2} />
+            }
+          </div>
+          <div>
+            {editionId ? (
+              <>
+                <p className="text-sm font-semibold text-white">
+                  Édition active : <span style={{ color: '#A5B4FC' }}>{editionName}</span>
+                </p>
+                <p className="text-xs text-[#8B9BB4] mt-0.5">
+                  Les fichiers importés seront liés à cette édition et disponibles pour les rapports IA.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-semibold" style={{ color: '#F59E0B' }}>
+                  Aucune édition sélectionnée
+                </p>
+                <p className="text-xs text-[#8B9BB4] mt-0.5">
+                  Sélectionnez une édition dans le menu en haut pour lier les imports aux rapports IA.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+        {editionId && (
+          <span className="text-2xs px-2.5 py-1 rounded-full font-semibold flex-shrink-0"
+            style={{ background: 'rgba(99,102,241,0.15)', color: '#A5B4FC', border: '1px solid rgba(99,102,241,0.25)' }}>
+            ID : {editionId.slice(0, 8)}…
+          </span>
+        )}
+      </div>
+
       {/* Intro */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { icon: HardDrive,    label: 'Données locales',      sub: 'Aucune donnée ne quitte votre poste', color: '#10B981' },
-          { icon: Zap,          label: 'Traitement instantané', sub: 'Calcul immédiat de tous les KPI',     color: '#068EEA' },
-          { icon: RefreshCw,    label: 'Mise à jour flexible',  sub: 'Re-importer à tout moment',           color: '#8B5CF6' },
+          { icon: HardDrive, label: 'Données locales',       sub: 'Aucune donnée ne quitte votre poste',     color: '#10B981' },
+          { icon: Zap,       label: 'Traitement instantané', sub: 'Calcul immédiat de tous les KPI',          color: '#068EEA' },
+          { icon: RefreshCw, label: 'Mise à jour flexible',  sub: 'Re-importer à tout moment',                color: '#8B5CF6' },
         ].map(({ icon: Icon, label, sub, color }) => (
           <div key={label} className="card p-4 flex items-start gap-3">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
@@ -243,6 +385,8 @@ export default function Parametres() {
             state={states[slot.id]}
             onDrop={handleDrop}
             onRemove={handleRemove}
+            editionId={editionId}
+            editionName={editionName}
           />
         ))}
       </div>
@@ -254,7 +398,10 @@ export default function Parametres() {
           <CheckCircle size={20} className="text-[#10B981] flex-shrink-0" strokeWidth={2} />
           <div>
             <p className="text-sm font-semibold text-[#10B981]">Toutes les sources sont chargées</p>
-            <p className="text-xs text-[#8B9BB4] mt-0.5">Les modules sont alimentés avec les données importées. Naviguez dans le menu pour explorer les analyses.</p>
+            <p className="text-xs text-[#8B9BB4] mt-0.5">
+              Les modules sont alimentés avec les données importées.
+              {editionId && ` Les données de consommation sont sauvegardées pour "${editionName}" et disponibles pour les rapports IA.`}
+            </p>
           </div>
         </div>
       )}
@@ -272,17 +419,17 @@ export default function Parametres() {
       >
         <div className="grid grid-cols-2 gap-3">
           {[
-            { label: 'Consommation 2023',        rows: '94 115 lignes', src: 'export_consommation_2023.xlsx',       ok: true  },
-            { label: 'Consommation 2024',        rows: '71 269 lignes', src: 'export_consommation_2024.xlsx',       ok: true  },
-            { label: 'Consommation 2025',        rows: '91 037 lignes', src: 'export_consommation_2025.xlsx',       ok: true  },
-            { label: 'Billetterie 2024',         rows: '9 078 billets', src: 'export_billetterie_2024.xlsx',        ok: true  },
-            { label: 'TDB Billetterie 2025',     rows: '19 onglets',    src: 'tdb_billetterie_2025.xlsx',           ok: true  },
-            { label: 'Stocks édition+1',         rows: '5 zones × 7h', src: 'previsions_stock_edition_n1.xlsx',    ok: true  },
-            { label: 'Profil client (formulaire)',rows: '3 299 rép.',   src: 'formulaire_participant_2025.xlsx',    ok: true  },
-            { label: 'Données 2022',             rows: '~100k lignes',  src: 'export_historique_2022.xlsx',         ok: false },
+            { label: 'Consommation 2023',         rows: '94 115 lignes', src: 'export_consommation_2023.xlsx',    ok: true  },
+            { label: 'Consommation 2024',         rows: '71 269 lignes', src: 'export_consommation_2024.xlsx',    ok: true  },
+            { label: 'Consommation 2025',         rows: '91 037 lignes', src: 'export_consommation_2025.xlsx',    ok: true  },
+            { label: 'Billetterie 2024',          rows: '9 078 billets', src: 'export_billetterie_2024.xlsx',     ok: true  },
+            { label: 'TDB Billetterie 2025',      rows: '19 onglets',    src: 'tdb_billetterie_2025.xlsx',        ok: true  },
+            { label: 'Stocks édition+1',          rows: '5 zones × 7h', src: 'previsions_stock_edition_n1.xlsx', ok: true  },
+            { label: 'Profil client (formulaire)',rows: '3 299 rép.',   src: 'formulaire_participant_2025.xlsx',  ok: true  },
+            { label: 'Données 2022',              rows: '~100k lignes', src: 'export_historique_2022.xlsx',       ok: false },
           ].map(({ label, rows, src, ok }) => (
             <div key={label} className="flex items-start gap-2.5 p-2.5 rounded-xl"
-              style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${ok ? '#1A2840' : '#1A2840'}` }}>
+              style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid #1A2840' }}>
               <div className="mt-0.5 flex-shrink-0">
                 {ok
                   ? <CheckCircle size={13} className="text-[#10B981]" strokeWidth={2} />
