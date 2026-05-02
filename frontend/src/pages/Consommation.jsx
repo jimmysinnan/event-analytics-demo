@@ -8,6 +8,7 @@ import SectionCard from '../components/ui/SectionCard'
 import { fmt } from '../lib/format'
 import { useEdition } from '../context/EditionContext'
 import { CONSO, OVERVIEW } from '../lib/editionsData'
+import { IS_DEMO } from '../lib/appMode'
 
 // CA horaire 2025 uniquement — pas disponible sur les autres années dans le même format
 const CA_HORAIRE_2025 = [
@@ -53,8 +54,8 @@ function NoData({ year, detail }) {
 
 export default function Consommation() {
   const { year } = useEdition()
-  const d    = CONSO[year]
-  const prev = CONSO[year - 1]
+  const d    = IS_DEMO ? CONSO[year]     : null
+  const prev = IS_DEMO ? CONSO[year - 1] : null
 
   const delta_ca    = d && prev ? fmt.delta(d.ca,      prev.ca)      : null
   const delta_cli   = d && prev ? fmt.delta(d.clients, prev.clients) : null

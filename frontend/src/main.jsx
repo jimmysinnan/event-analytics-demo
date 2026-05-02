@@ -17,7 +17,7 @@ if (window.location.protocol === 'file:') {
           puis ouvrez <strong style="color:#10B981">http://localhost:5174</strong>
         </p>
         <code style="background:#111D33;color:#06B6D4;padding:.5rem 1rem;border-radius:.5rem;font-size:.875rem">
-          C:\\Users\\jimmy\\event-analytics-demo\\start.bat
+          start.bat
         </code>
       </div>
     </div>

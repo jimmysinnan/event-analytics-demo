@@ -1,5 +1,5 @@
 """
-KPI Engine — Baccha Festival
+Event Analytics — KPI Engine
 Calcule tous les indicateurs à partir des DataFrames chargés.
 """
 import pandas as pd

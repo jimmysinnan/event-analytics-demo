@@ -69,9 +69,15 @@ function seedDemoData() {
   save(KEYS.editions, editions)
 }
 
-// ── Init (seed si vide) ────────────────────────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────────────────────────
 export function initStore() {
-  if (load(KEYS.orgs).length === 0) seedDemoData()
+  const mode = import.meta.env.VITE_APP_MODE ?? 'demo'
+  if (load(KEYS.orgs).length === 0) {
+    if (mode !== 'production') {
+      seedDemoData()
+    }
+    // En mode production : store vide — l'utilisateur crée son événement depuis /evenements
+  }
 }
 
 // ── CRUD Organisations ─────────────────────────────────────────────────────────

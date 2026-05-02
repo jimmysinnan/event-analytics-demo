@@ -150,7 +150,7 @@ export default function Settings() {
             <input
               className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none transition"
               style={{ background: '#080E1E', border: '1px solid #1A2840' }}
-              placeholder="Ex: Festival Client, Baccha Festival…"
+              placeholder="Ex: Festival Été, Gala Annual, Forum Tech…"
               value={settings.appName ?? ''}
               onChange={e => set('appName')(e.target.value)}
               onFocus={e => e.target.style.borderColor = '#6366F1'}

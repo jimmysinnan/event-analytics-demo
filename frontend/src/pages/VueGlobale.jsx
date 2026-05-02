@@ -3,11 +3,13 @@ import {
   Tooltip, ResponsiveContainer, Cell, PieChart, Pie
 } from 'recharts'
 import { Users, Euro, ShoppingBag, Ticket, Gift, ArrowUpRight, ArrowDownRight, Info } from 'lucide-react'
-import KpiCard from '../components/ui/KpiCard'
+import KpiCard    from '../components/ui/KpiCard'
 import SectionCard from '../components/ui/SectionCard'
-import { fmt } from '../lib/format'
+import EmptyState  from '../components/ui/EmptyState'
+import { fmt }    from '../lib/format'
 import { useEdition } from '../context/EditionContext'
 import { CONSO, BILLETTERIE, OVERVIEW, AFFLUENCE } from '../lib/editionsData'
+import { IS_DEMO } from '../lib/appMode'
 
 const PASS_CULTURE = [
   { year: '2023', ventes: 1259, ca: 188850 },
@@ -92,8 +94,9 @@ function NoData({ year, module }) {
 
 export default function VueGlobale() {
   const { year } = useEdition()
-  const conso   = CONSO[year]
-  const billet  = BILLETTERIE[year]
+  // En mode production, ne pas afficher les données de démo hardcodées
+  const conso   = IS_DEMO ? CONSO[year]      : null
+  const billet  = IS_DEMO ? BILLETTERIE[year] : null
   const prev    = CONSO[year - 1]
 
   const delta_ca    = prev ? fmt.delta(conso?.ca, prev?.ca) : null

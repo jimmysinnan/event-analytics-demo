@@ -197,7 +197,7 @@ export default function Restitution() {
       {/* Intro */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { icon: Eye,      label: 'Consulter',  sub: 'Ouvre le PDF 2025 dans un nouvel onglet',  color: '#068EEA' },
+          { icon: Eye,      label: 'Consulter',  sub: `Ouvre le PDF de référence de l'édition ${year}`,  color: '#068EEA' },
           { icon: Zap,      label: 'Générer',    sub: 'Crée un nouveau PDF avec les données actuelles', color: '#F59E0B' },
           { icon: Download, label: 'Télécharger',sub: 'Sauvegarde le PDF directement sur votre poste', color: '#8B5CF6' },
         ].map(({ icon: Icon, label, sub, color }) => (
@@ -219,7 +219,7 @@ export default function Restitution() {
         style={{ background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.15)' }}>
         <div className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style={{ background: '#F59E0B' }} />
         <p className="text-xs text-[#8B9BB4]">
-          <span className="text-white font-semibold">Consulter</span> ouvre le PDF original créé pour l'édition 2025.
+          <span className="text-white font-semibold">Consulter</span> ouvre le PDF de référence si disponible pour l'édition sélectionnée.
           <span className="text-white font-semibold"> Générer</span> recrée un PDF complet avec les données de l'édition sélectionnée
           (<span className="text-[#F59E0B] font-semibold">{year}</span>) dans le même format de restitution.
           Le backend doit être démarré pour la génération.

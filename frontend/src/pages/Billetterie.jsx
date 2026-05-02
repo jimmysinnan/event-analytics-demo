@@ -7,6 +7,7 @@ import BilletterieTracking from '../components/BilletterieTracking'
 import { fmt } from '../lib/format'
 import { useEdition } from '../context/EditionContext'
 import { BILLETTERIE, AFFLUENCE } from '../lib/editionsData'
+import { IS_DEMO } from '../lib/appMode'
 import { getChannels } from '../store/eventStore'
 
 const LS_CHANNEL_TAB = 'ea_billetterie_channel_tab'
@@ -60,8 +61,8 @@ export default function Billetterie() {
   )
   const [channels, setChannels] = useState([])
 
-  const b  = BILLETTERIE[year]
-  const af = AFFLUENCE[year]
+  const b  = IS_DEMO ? BILLETTERIE[year] : null
+  const af = IS_DEMO ? AFFLUENCE[year]   : null
 
   const totalTickets2025 = REALISE_2025.reduce((s, r) => s + r.tickets, 0)
   const totalCA2025      = REALISE_2025.reduce((s, r) => s + r.ca,      0)
@@ -181,11 +182,11 @@ export default function Billetterie() {
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
             <KpiCard label="Festivaliers scannés"
               value={af ? fmt.number(af.total) : b?.scans ? fmt.number(b.scans) : '—'}
-              sub="Entrées" delta={year === 2025 ? -17.4 : null} accent="blue" icon={Users} />
+              sub="Entrées" delta={null} accent="blue" icon={Users} />
             <KpiCard label="CA Billetterie"
               value={b?.ca_billet ? fmt.currency(b.ca_billet) : '—'}
-              sub="Toutes formules" delta={year === 2025 ? -8.8 : null} accent="gold" icon={Euro} />
-            <KpiCard label={year === 2025 ? 'Billets totaux' : 'Pass Week-End'}
+              sub="Toutes formules" delta={null} accent="gold" icon={Euro} />
+            <KpiCard label="Billets totaux"
               value={year === 2025 ? fmt.number(totalTickets2025)
                 : b?.familles_tarifaires?.[0]?.nb ? fmt.number(b.familles_tarifaires[0].nb) : '—'}
               sub={year === 2025 ? '31% invitations' : 'Principal format'}
@@ -193,7 +194,7 @@ export default function Billetterie() {
             <KpiCard label="CSE / partenaires"
               value={year === 2025 ? fmt.number(2704) : '—'}
               sub={year === 2025 ? fmt.currency(236928) : `Voir données ${year}`}
-              delta={year === 2025 ? +152.7 : null} accent="violet" icon={Gift} />
+              delta={null} accent="violet" icon={Gift} />
           </div>
 
           {/* Familles tarifaires */}
