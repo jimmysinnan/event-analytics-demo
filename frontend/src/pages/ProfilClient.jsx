@@ -2,53 +2,57 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer
 } from 'recharts'
-import { Users, TrendingUp, ShoppingBag, Clock } from 'lucide-react'
-import KpiCard from '../components/ui/KpiCard'
+import { Users, TrendingUp, ShoppingBag } from 'lucide-react'
+import KpiCard    from '../components/ui/KpiCard'
 import SectionCard from '../components/ui/SectionCard'
-import { fmt } from '../lib/format'
+import EmptyState  from '../components/ui/EmptyState'
+import { fmt }    from '../lib/format'
+import { useEdition } from '../context/EditionContext'
 
-// ── Données réelles — source Formulaire participant 2025 (3 299 entrées) ────────
-const GENRE = [
-  { name: 'Femme', pct: 50.8, n: 1677, color: '#8B5CF6' },
-  { name: 'Homme', pct: 42.8, n: 1413, color: '#068EEA' },
-  { name: 'Autre', pct: 6.3,  n: 209,  color: '#4A5568' },
-]
+// ── Données par année ─────────────────────────────────────────────────────────
+// Structure : DATA_BY_YEAR[year] = { genre, tranches, comportement, prefs, heures, source }
+// Ajouter une nouvelle année ici dès que les données sont disponibles.
 
-// % depuis formulaire (2 155 avec âge renseigné)
-const TRANCHES = [
-  { age: '18–20', pct: 16.8, n: 362,  color: '#06B6D4' },
-  { age: '21–30', pct: 45.2, n: 975,  color: '#068EEA' },
-  { age: '31–40', pct: 25.2, n: 542,  color: '#8B5CF6' },
-  { age: '41–50', pct: 6.8,  n: 147,  color: '#F59E0B' },
-  { age: '51+',   pct: 6.0,  n: 129,  color: '#F97316' },
-]
-
-// CA et comportement par tranche (BDD 2025 — clients avec âge renseigné)
-const COMPORTEMENT = [
-  { age: '18–20', ca: 11427, clients: 1222, panier: 9.3  },
-  { age: '21–30', ca: 43104, clients: 3931, panier: 11.0 },
-  { age: '31–40', ca: 35430, clients: 2637, panier: 13.4 },
-  { age: '41–50', ca: 7521,  clients: 675,  panier: 11.1 },
-  { age: '51+',   ca: 6505,  clients: 597,  panier: 10.9 },
-]
-
-// Préférences produit (% des achats par tranche)
-const PREFS = [
-  { cat: 'Champagne', j18: 28, j21: 42, j31: 38, j41: 45, j51: 52 },
-  { cat: 'Cocktail',  j18: 35, j21: 25, j31: 18, j41: 12, j51: 8  },
-  { cat: 'Bières',    j18: 22, j21: 18, j31: 22, j41: 25, j51: 20 },
-  { cat: 'Soft',      j18: 15, j21: 15, j31: 22, j41: 18, j51: 20 },
-]
-
-// Heures chaudes par tranche (activité relative %)
-const HEURES = [
-  { h: '17h', j18: 8,  j21: 12, j31: 10 },
-  { h: '18h', j18: 15, j21: 18, j31: 14 },
-  { h: '19h', j18: 28, j21: 30, j31: 25 },
-  { h: '20h', j18: 22, j21: 20, j31: 22 },
-  { h: '21h', j18: 18, j21: 12, j31: 18 },
-  { h: '22h', j18: 9,  j21: 8,  j31: 11 },
-]
+const DATA_BY_YEAR = {
+  2025: {
+    source:    'Formulaire participant 2025 — 3 299 réponses',
+    genre: [
+      { name: 'Femme', pct: 50.8, n: 1677, color: '#8B5CF6' },
+      { name: 'Homme', pct: 42.8, n: 1413, color: '#068EEA' },
+      { name: 'Autre', pct: 6.3,  n: 209,  color: '#4A5568' },
+    ],
+    tranches: [
+      { age: '18–20', pct: 16.8, n: 362,  color: '#06B6D4' },
+      { age: '21–30', pct: 45.2, n: 975,  color: '#068EEA' },
+      { age: '31–40', pct: 25.2, n: 542,  color: '#8B5CF6' },
+      { age: '41–50', pct: 6.8,  n: 147,  color: '#F59E0B' },
+      { age: '51+',   pct: 6.0,  n: 129,  color: '#F97316' },
+    ],
+    comportement: [
+      { age: '18–20', ca: 11427, clients: 1222, panier: 9.3  },
+      { age: '21–30', ca: 43104, clients: 3931, panier: 11.0 },
+      { age: '31–40', ca: 35430, clients: 2637, panier: 13.4 },
+      { age: '41–50', ca: 7521,  clients: 675,  panier: 11.1 },
+      { age: '51+',   ca: 6505,  clients: 597,  panier: 10.9 },
+    ],
+    prefs: [
+      { cat: 'Champagne', j18: 28, j21: 42, j31: 38, j41: 45, j51: 52 },
+      { cat: 'Cocktail',  j18: 35, j21: 25, j31: 18, j41: 12, j51: 8  },
+      { cat: 'Bières',    j18: 22, j21: 18, j31: 22, j41: 25, j51: 20 },
+      { cat: 'Soft',      j18: 15, j21: 15, j31: 22, j41: 18, j51: 20 },
+    ],
+    heures: [
+      { h: '17h', j18: 8,  j21: 12, j31: 10 },
+      { h: '18h', j18: 15, j21: 18, j31: 14 },
+      { h: '19h', j18: 28, j21: 30, j31: 25 },
+      { h: '20h', j18: 22, j21: 20, j31: 22 },
+      { h: '21h', j18: 18, j21: 12, j31: 18 },
+      { h: '22h', j18: 9,  j21: 8,  j31: 11 },
+    ],
+  },
+  // 2024: { ... }  ← à renseigner quand les données seront disponibles
+  // 2023: { ... }
+}
 
 function Tip({ active, payload, label }) {
   if (!active || !payload?.length) return null
@@ -63,7 +67,24 @@ function Tip({ active, payload, label }) {
 }
 
 export default function ProfilClient() {
-  const dominant = TRANCHES.reduce((a, b) => b.pct > a.pct ? b : a)
+  const { year } = useEdition()
+  const data = DATA_BY_YEAR[year]
+
+  if (!data) {
+    return (
+      <div className="space-y-4 animate-slide-up">
+        <EmptyState
+          year={year}
+          module="Profil Client"
+          message={`Aucune donnée Profil Client disponible pour l'édition ${year}.`}
+          hint="Le profil client est alimenté par le formulaire participant et les données de consommation. Les données démographiques sont disponibles pour l'édition 2025."
+        />
+      </div>
+    )
+  }
+
+  const { genre: GENRE, tranches: TRANCHES, comportement: COMPORTEMENT, prefs: PREFS, heures: HEURES, source } = data
+  const dominant  = TRANCHES.reduce((a, b) => b.pct > a.pct ? b : a)
   const maxPanier = COMPORTEMENT.reduce((a, b) => b.panier > a.panier ? b : a)
 
   return (
@@ -74,8 +95,8 @@ export default function ProfilClient() {
         style={{ background: 'rgba(6,182,212,0.07)', border: '1px solid rgba(6,182,212,0.15)' }}>
         <div className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style={{ background: '#06B6D4' }} />
         <p className="text-xs text-[#8B9BB4]">
-          Source : Formulaire participant 2025 — <span className="text-white font-semibold">3 299 réponses</span>.
-          Données démographiques disponibles uniquement pour 2025.
+          Source : <span className="text-white font-semibold">{source}</span>.
+          Données démographiques disponibles pour l'édition {year}.
         </p>
       </div>
 

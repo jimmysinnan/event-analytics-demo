@@ -3,10 +3,16 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell
 } from 'recharts'
-import { Package, TrendingDown, Clock, CheckCircle } from 'lucide-react'
-import KpiCard from '../components/ui/KpiCard'
+import { Package, TrendingDown, Clock, CheckCircle, AlertTriangle } from 'lucide-react'
+import KpiCard    from '../components/ui/KpiCard'
 import SectionCard from '../components/ui/SectionCard'
-import { fmt } from '../lib/format'
+import EmptyState  from '../components/ui/EmptyState'
+import { fmt }    from '../lib/format'
+import { useEdition } from '../context/EditionContext'
+
+// Années pour lesquelles les prévisions stocks sont disponibles
+// Format : BASE_YEAR → projection pour BASE_YEAR+1
+const STOCKS_BASE_YEARS = [2025]  // ajouter 2026, 2027... au fur et à mesure
 
 const ASSUMPTIONS = [
   { bar: 'Zone Nord',       t24: 5417, t25: 595,  factor: -0.10, t26: 536,  color: '#068EEA', key: 'zone-nord'     },
@@ -67,8 +73,28 @@ function Tip({ active, payload, label }) {
 }
 
 export default function Stocks() {
+  const { year } = useEdition()
   const [activeBar, setActiveBar] = useState('Zone Nord')
   const detail = BARS_DETAIL[activeBar]
+
+  // Ce module affiche les prévisions pour l'édition suivante (year+1),
+  // calculées à partir des données de l'année de base.
+  // Les prévisions ne sont disponibles que si year est dans STOCKS_BASE_YEARS.
+  const hasData   = STOCKS_BASE_YEARS.includes(year)
+  const nextYear  = year + 1
+
+  if (!hasData) {
+    return (
+      <div className="space-y-4 animate-slide-up">
+        <EmptyState
+          year={year}
+          module="Stocks Édition+1"
+          message={`Les prévisions de stocks pour l'édition ${nextYear} ne sont pas encore disponibles.`}
+          hint={`Les prévisions sont calculées à partir des données de consommation de l'édition de base. Les prévisions ${nextYear} (basées sur ${year}) seront disponibles après import des données ${year}.`}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6 animate-slide-up">
@@ -78,8 +104,8 @@ export default function Stocks() {
         style={{ background: 'rgba(6,182,212,0.07)', border: '1px solid rgba(6,182,212,0.15)' }}>
         <div className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style={{ background: '#06B6D4' }} />
         <p className="text-xs text-[#8B9BB4]">
-          Prévisions basées sur les volumes 2025 avec un facteur <span className="text-white font-semibold">−10%</span>
-          (hypothèse conservative). Source : <span className="text-white">Previsions_stock_2026_PAR_BAR_HEURE_PRODUIT.xlsx</span>
+          Prévisions pour l'édition <span className="text-white font-semibold">{nextYear}</span> basées sur les volumes {year} avec un facteur <span className="text-white font-semibold">−10%</span>
+          (hypothèse conservative). Source : <span className="text-white">Previsions_stock_{nextYear}_PAR_BAR_HEURE_PRODUIT.xlsx</span>
         </p>
       </div>
 

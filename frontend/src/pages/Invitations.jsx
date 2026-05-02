@@ -3,55 +3,56 @@ import {
   ResponsiveContainer, Cell
 } from 'recharts'
 import { Gift, Euro, Users, TrendingDown } from 'lucide-react'
-import KpiCard from '../components/ui/KpiCard'
+import KpiCard    from '../components/ui/KpiCard'
 import SectionCard from '../components/ui/SectionCard'
-import { fmt } from '../lib/format'
+import EmptyState  from '../components/ui/EmptyState'
+import { fmt }    from '../lib/format'
+import { useEdition } from '../context/EditionContext'
 
-// ── Données réelles — source BDD Weezpay 2025 ─────────────────────────────────
-// CA invités calculé directement par filtre "Tarif billets CONTAINS INVITATION"
-const CA_REEL_INVITES   = 91955
-const PANIER_INVITES    = 79.61   // panier moyen réel invités
-const PANIER_PAYANTS    = 58.19   // panier moyen réel payants
-const VALEUR_INVIT      = 421510  // source CSE × partenaire détails (valeur marché)
-const ENTREES_INVIT     = 5240
-const TOTAL_ENTREES     = 16810
-const TOTAL_BILLETS     = 1570
-const CLIENTS_INVITES   = 1155    // clients invités ayant effectivement consommé
-const PERTES_NETTES     = VALEUR_INVIT - CA_REEL_INVITES
+// ── Données par année ─────────────────────────────────────────────────────────
+// Ajouter une entrée par année dès que les données sont disponibles.
+const DATA_BY_YEAR = {
+  2025: {
+    CA_REEL_INVITES:  91955,
+    PANIER_INVITES:   79.61,
+    PANIER_PAYANTS:   58.19,
+    VALEUR_INVIT:     421510,
+    ENTREES_INVIT:    5240,
+    TOTAL_ENTREES:    16810,
+    TOTAL_BILLETS:    1570,
+    CLIENTS_INVITES:  1155,
+    TOP_INVITEURS: [
+      { contact: 'Contact VIP 1',        qty: 200, valeur: 48000 },
+      { contact: 'Partenaire A',         qty: 142, valeur: 36920 },
+      { contact: 'Partenaire Food',      qty: 220, valeur: 35100 },
+      { contact: 'Contact 2',            qty: 125, valeur: 15000 },
+      { contact: 'Partenaire Média',     qty: 117, valeur: 16760 },
+      { contact: 'Contact 3',            qty: 70,  valeur: 8400  },
+      { contact: 'Contact 4',            qty: 70,  valeur: 10800 },
+      { contact: 'Partenaire Boisson',   qty: 50,  valeur: 10800 },
+      { contact: 'Partenaire Transport', qty: 50,  valeur: 7600  },
+      { contact: 'Partenaire B',         qty: 50,  valeur: 14000 },
+    ],
+    CA_PDV_INVITES: [
+      { pdv: 'Bar Zone VIP',      ca: 30634 },
+      { pdv: 'Bar Zone Nord',     ca: 14125 },
+      { pdv: 'Bar Zone Sud',      ca: 7185  },
+      { pdv: 'Bar VIP Int.',      ca: 6001  },
+      { pdv: 'Bar Partenaire A',  ca: 5296  },
+      { pdv: 'Bar Zone Centrale', ca: 4482  },
+    ],
+    CA_FAM_INVITES: [
+      { name: 'Champagne',   ca: 40336, color: '#F59E0B' },
+      { name: 'Bières',      ca: 7104,  color: '#068EEA' },
+      { name: 'Hard',        ca: 5952,  color: '#EF4444' },
+      { name: 'Soft',        ca: 5844,  color: '#06B6D4' },
+      { name: 'Bar Cocktail',ca: 5296,  color: '#8B5CF6' },
+      { name: 'Cocktail',    ca: 4348,  color: '#F97316' },
+    ],
+  },
+  // 2024: { ... }  ← à renseigner quand les données sont disponibles
+}
 
-const RATIO_RENTABILITE = ((CA_REEL_INVITES / VALEUR_INVIT) * 100).toFixed(1)
-const RETOUR_PAR_EURO   = (CA_REEL_INVITES / VALEUR_INVIT).toFixed(2)
-
-const TOP_INVITEURS = [
-  { contact: 'Contact VIP 1',       qty: 200, valeur: 48000  },
-  { contact: 'Partenaire A',        qty: 142, valeur: 36920  },
-  { contact: 'Partenaire Food',     qty: 220, valeur: 35100  },
-  { contact: 'Contact 2',           qty: 125, valeur: 15000  },
-  { contact: 'Partenaire Média',    qty: 117, valeur: 16760  },
-  { contact: 'Contact 3',           qty: 70,  valeur: 8400   },
-  { contact: 'Contact 4',           qty: 70,  valeur: 10800  },
-  { contact: 'Partenaire Boisson',  qty: 50,  valeur: 10800  },
-  { contact: 'Partenaire Transport',qty: 50,  valeur: 7600   },
-  { contact: 'Partenaire B',        qty: 50,  valeur: 14000  },
-]
-
-const CA_PDV_INVITES = [
-  { pdv: 'Bar Zone VIP',       ca: 30634 },
-  { pdv: 'Bar Zone Nord',      ca: 14125 },
-  { pdv: 'Bar Zone Sud',       ca: 7185  },
-  { pdv: 'Bar VIP Int.',       ca: 6001  },
-  { pdv: 'Bar Partenaire A',   ca: 5296  },
-  { pdv: 'Bar Zone Centrale',  ca: 4482  },
-]
-
-const CA_FAM_INVITES = [
-  { name: 'Champagne',   ca: 40336, color: '#F59E0B' },
-  { name: 'Bières',      ca: 7104,  color: '#068EEA' },
-  { name: 'Hard',        ca: 5952,  color: '#EF4444' },
-  { name: 'Soft',        ca: 5844,  color: '#06B6D4' },
-  { name: 'Bar Cocktail',ca: 5296,  color: '#8B5CF6' },
-  { name: 'Cocktail',    ca: 4348,  color: '#F97316' },
-]
 
 function Tip({ active, payload, label }) {
   if (!active || !payload?.length) return null
@@ -68,7 +69,32 @@ function Tip({ active, payload, label }) {
 }
 
 export default function Invitations() {
-  const pctInvit = ((ENTREES_INVIT / TOTAL_ENTREES) * 100).toFixed(1)
+  const { year } = useEdition()
+  const d = DATA_BY_YEAR[year]
+
+  if (!d) {
+    return (
+      <div className="space-y-4 animate-slide-up">
+        <EmptyState
+          year={year}
+          module="Invitations"
+          message={`Aucune donnée Invitations disponible pour l'édition ${year}.`}
+          hint="L'analyse des invitations est disponible pour l'édition 2025. Sélectionnez l'édition 2025 ou importez les données correspondantes."
+        />
+      </div>
+    )
+  }
+
+  const {
+    CA_REEL_INVITES, PANIER_INVITES, PANIER_PAYANTS, VALEUR_INVIT,
+    ENTREES_INVIT, TOTAL_ENTREES, TOTAL_BILLETS, CLIENTS_INVITES,
+    TOP_INVITEURS, CA_PDV_INVITES, CA_FAM_INVITES,
+  } = d
+
+  const PERTES_NETTES     = VALEUR_INVIT - CA_REEL_INVITES
+  const RATIO_RENTABILITE = ((CA_REEL_INVITES / VALEUR_INVIT) * 100).toFixed(1)
+  const RETOUR_PAR_EURO   = (CA_REEL_INVITES / VALEUR_INVIT).toFixed(2)
+  const pctInvit          = ((ENTREES_INVIT / TOTAL_ENTREES) * 100).toFixed(1)
 
   return (
     <div className="space-y-6 animate-slide-up">
