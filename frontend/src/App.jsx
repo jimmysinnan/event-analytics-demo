@@ -26,7 +26,7 @@ export default function App() {
             <Route path="invitations"   element={<Invitations />}  />
             <Route path="stocks"        element={<Stocks />}       />
             <Route path="restitution"   element={<Restitution />}  />
-            <Route path="import"        element={<Import />}       />
+            <Route path="importer-donnees" element={<Import />}      />
             <Route path="parametres"    element={<Settings />}     />
           </Route>
         </Routes>

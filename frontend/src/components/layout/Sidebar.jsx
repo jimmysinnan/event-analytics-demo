@@ -15,7 +15,7 @@ const NAV = [
   { label: 'Invitations',      icon: Gift,            to: '/invitations',   section: 'main'  },
   { label: 'Stocks Édition+1', icon: Package,         to: '/stocks',        section: 'main'  },
   { label: 'Restitution PDF',  icon: FileText,        to: '/restitution',   section: 'tools' },
-  { label: 'Importer données', icon: Upload,          to: '/import',        section: 'tools' },
+  { label: 'Importer données', icon: Upload,          to: '/importer-donnees', section: 'tools' },
   { label: 'Paramètres',       icon: Settings,        to: '/parametres',    section: 'tools' },
 ]
 

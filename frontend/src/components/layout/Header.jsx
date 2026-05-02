@@ -11,7 +11,7 @@ const PAGE_TITLES = {
   '/invitations':   { title: 'Invitations',       sub: 'Volume, valeur, rentabilité' },
   '/stocks':        { title: 'Stocks Édition+1',  sub: 'Prévisions par bar et produit' },
   '/restitution':   { title: 'Restitution PDF',   sub: 'Rapports IA et présentations' },
-  '/import':        { title: 'Importer données',  sub: 'Upload des fichiers de consommation et billetterie' },
+  '/importer-donnees': { title: 'Importer données', sub: 'Upload des fichiers de consommation et billetterie' },
   '/parametres':    { title: 'Paramètres',        sub: 'Configuration de l\'instance' },
 }
 
@@ -90,7 +90,7 @@ export default function Header({ loading }) {
 
         {/* Upload */}
         <button
-          onClick={() => navigate('/parametres')}
+          onClick={() => navigate('/importer-donnees')}
           className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-semibold text-white
                      transition-all duration-200 hover:opacity-90 active:scale-95 select-none"
           style={{ background: 'linear-gradient(135deg, #068EEA 0%, #0059A2 100%)' }}

@@ -1,67 +1,71 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import {
   Upload, CheckCircle, AlertCircle, FileSpreadsheet,
-  Trash2, RefreshCw, Database, Zap, HardDrive, Info, Link, AlertTriangle
+  Trash2, RefreshCw, Database, Info, Link, AlertTriangle,
+  Clock, RotateCcw, ChevronDown, ChevronRight
 } from 'lucide-react'
-import SectionCard from '../components/ui/SectionCard'
 import { fmt } from '../lib/format'
 import { useEdition } from '../context/EditionContext'
-import { API, uploadHeaders } from '../lib/api'
+import { API } from '../lib/api'
 
+// ── Sources d'import ─────────────────────────────────────────────────────────
 const SLOTS = [
   {
-    id:       'conso',
-    label:    'Données de consommation',
-    sub:      'Export Weezpay — onglet BDD ou JDD Vente',
-    icon:     Database,
-    color:    '#068EEA',
-    hint:     'export_consommation_20XX.xlsx · export_ventes_20XX.xlsx',
-    endpoint: '/api/upload/conso',
-    modules:  ['Consommation', 'Profil Client', 'Invitations', 'Stocks'],
+    id:           'conso',
+    label:        'Données de consommation',
+    sub:          'Export Weezpay — onglet BDD ou JDD Vente',
+    icon:         Database,
+    color:        '#068EEA',
+    hint:         'export_consommation_20XX.xlsx · export_ventes_20XX.xlsx',
+    endpoint:     '/api/upload/import',
+    sourceParam:  'conso',
+    modules:      ['Consommation', 'Profil Client', 'Invitations', 'Stocks'],
     needsEdition: true,
+    formats:      ['.xlsx', '.xls', '.csv', '.parquet'],
   },
   {
-    id:       'billetterie',
-    label:    'TDB Billetterie',
-    sub:      'Fichier TDB billetterie 20XX.xlsx',
-    icon:     FileSpreadsheet,
-    color:    '#F59E0B',
-    hint:     'TDB billetterie 2025.xlsx — tous onglets requis',
-    endpoint: '/api/upload/billetterie',
-    modules:  ['Billetterie', 'Invitations', 'Vue Globale'],
-    needsEdition: false,
+    id:           'billetterie',
+    label:        'Billetterie multi-source',
+    sub:          'Weezevent · Bizouk · BilletWeb · Eventbrite · Shotgun…',
+    icon:         FileSpreadsheet,
+    color:        '#F59E0B',
+    hint:         'export_weezevent.xlsx · export_bizouk.xlsx · …',
+    endpoint:     '/api/upload/import',
+    sourceParam:  'auto',
+    modules:      ['Billetterie', 'Suivi live', 'Vue Globale'],
+    needsEdition: true,
+    formats:      ['.xlsx', '.xls', '.csv'],
   },
 ]
 
-function FileSlot({ slot, state, onDrop, onRemove, editionName, editionId }) {
-  const inputRef = useRef(null)
-  const [dragging, setDragging] = useState(false)
+// ── Composant slot d'import ───────────────────────────────────────────────────
+function FileSlot({ slot, state, onDrop, onRemove, editionId, editionName }) {
+  const inputRef  = useRef(null)
+  const [drag, setDrag] = useState(false)
   const { icon: Icon, color } = slot
+  const status = state?.status ?? 'idle'
 
-  const handleDrop = useCallback(e => {
+  const handleInput = useCallback(e => {
     e.preventDefault()
-    setDragging(false)
+    setDrag(false)
     const file = e.dataTransfer?.files?.[0] ?? e.target?.files?.[0]
     if (file) onDrop(slot.id, file)
   }, [slot.id, onDrop])
 
-  const status    = state?.status ?? 'idle'
-  const isSaved   = state?.result?._saved === true
   const noEdition = slot.needsEdition && !editionId
 
   return (
     <div
       className="rounded-2xl p-5 flex flex-col gap-4 transition-all duration-200"
       style={{
-        background: dragging ? `${color}10` : '#0D1526',
-        border: `1px solid ${dragging ? color : status === 'success' ? '#10B981' : status === 'error' ? '#EF4444' : '#1A2840'}`,
-        boxShadow: dragging ? `0 0 24px ${color}20` : 'none',
+        background: drag ? `${color}10` : '#0D1526',
+        border: `1px solid ${drag ? color : status === 'success' ? '#10B981' : status === 'error' ? '#EF4444' : '#1A2840'}`,
       }}
-      onDragOver={e => { e.preventDefault(); setDragging(true) }}
-      onDragLeave={() => setDragging(false)}
-      onDrop={handleDrop}
+      onDragOver={e => { e.preventDefault(); setDrag(true) }}
+      onDragLeave={() => setDrag(false)}
+      onDrop={handleInput}
     >
-      {/* Header */}
+      {/* Header slot */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -81,7 +85,17 @@ function FileSlot({ slot, state, onDrop, onRemove, editionName, editionId }) {
         )}
       </div>
 
-      {/* Badge édition active (slot conso uniquement) */}
+      {/* Formats acceptés */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {slot.formats.map(f => (
+          <span key={f} className="text-2xs px-2 py-0.5 rounded font-mono"
+            style={{ background: 'rgba(255,255,255,0.04)', color: '#4A5568', border: '1px solid #1A2840' }}>
+            {f}
+          </span>
+        ))}
+      </div>
+
+      {/* Badge édition */}
       {slot.needsEdition && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
           style={{
@@ -90,196 +104,263 @@ function FileSlot({ slot, state, onDrop, onRemove, editionName, editionId }) {
           }}>
           {editionId ? (
             <>
-              <Link size={12} style={{ color: '#068EEA' }} strokeWidth={2} />
-              <span style={{ color: '#8B9BB4' }}>Sera lié à l'édition :</span>
+              <Link size={11} style={{ color: '#068EEA' }} strokeWidth={2} />
+              <span style={{ color: '#8B9BB4' }}>Édition :</span>
               <span className="font-semibold" style={{ color: '#21AAFA' }}>{editionName}</span>
-              <span className="ml-auto text-2xs px-1.5 py-0.5 rounded-full font-medium"
-                style={{ background: 'rgba(6,142,234,0.15)', color: '#068EEA' }}>
-                Sauvegarde IA activée
-              </span>
             </>
           ) : (
             <>
-              <AlertTriangle size={12} style={{ color: '#F59E0B' }} strokeWidth={2} />
-              <span style={{ color: '#F59E0B' }}>Aucune édition sélectionnée — les données ne seront pas liées</span>
+              <AlertTriangle size={11} style={{ color: '#F59E0B' }} strokeWidth={2} />
+              <span style={{ color: '#F59E0B' }}>Sélectionnez une édition en haut de page</span>
             </>
           )}
         </div>
       )}
 
-      {/* Drop zone */}
+      {/* Zone de dépôt */}
       {!state?.file ? (
         <button
           onClick={() => inputRef.current?.click()}
-          className="flex flex-col items-center justify-center gap-3 py-8 rounded-xl border-2 border-dashed
-                     transition-all duration-200 hover:border-opacity-80 cursor-pointer w-full"
-          style={{ borderColor: `${color}40`, background: `${color}05` }}
+          disabled={noEdition}
+          className="flex flex-col items-center justify-center gap-3 py-7 rounded-xl border-2 border-dashed
+                     transition-all duration-200 w-full"
+          style={{
+            borderColor: noEdition ? '#1A2840' : `${color}40`,
+            background:  noEdition ? 'transparent' : `${color}05`,
+            opacity:     noEdition ? 0.4 : 1,
+            cursor:      noEdition ? 'not-allowed' : 'pointer',
+          }}
         >
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center"
             style={{ background: `${color}18` }}>
-            <Upload size={20} style={{ color }} strokeWidth={1.5} />
+            <Upload size={18} style={{ color }} strokeWidth={1.5} />
           </div>
           <div className="text-center">
-            <p className="text-sm font-medium text-white">Déposer le fichier ici</p>
-            <p className="text-xs text-[#8B9BB4] mt-0.5">ou cliquer pour parcourir</p>
+            <p className="text-sm font-medium text-white">Déposer ou cliquer pour sélectionner</p>
+            <p className="text-xs text-[#8B9BB4] mt-0.5">{slot.hint}</p>
           </div>
-          <p className="text-2xs text-[#4A5568] px-4 text-center leading-snug">{slot.hint}</p>
-          <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleDrop} />
+          <input ref={inputRef} type="file" accept={slot.formats.join(',')} className="hidden" onChange={handleInput} />
         </button>
       ) : (
-        <div className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid #1A2840' }}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 min-w-0">
-              <FileSpreadsheet size={16} className="text-[#8B9BB4] flex-shrink-0" strokeWidth={1.8} />
-              <p className="text-xs text-white font-medium truncate">{state.file.name}</p>
-            </div>
-            <p className="text-2xs text-[#4A5568] flex-shrink-0 ml-2">
-              {(state.file.size / 1024).toFixed(0)} ko
-            </p>
-          </div>
+        <div className="rounded-xl p-3 flex items-center gap-2"
+          style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid #1A2840' }}>
+          <FileSpreadsheet size={15} className="text-[#8B9BB4] flex-shrink-0" strokeWidth={1.8} />
+          <p className="text-xs text-white font-medium truncate flex-1">{state.file.name}</p>
+          <p className="text-2xs text-[#4A5568] flex-shrink-0">{(state.file.size / 1024).toFixed(0)} ko</p>
         </div>
       )}
 
-      {/* Status */}
+      {/* État : en cours */}
       {status === 'loading' && (
         <div className="flex items-center gap-2">
-          <RefreshCw size={14} className="animate-spin" style={{ color }} strokeWidth={2} />
-          <p className="text-xs text-[#8B9BB4]">Traitement en cours…</p>
+          <RefreshCw size={13} className="animate-spin" style={{ color }} strokeWidth={2} />
+          <p className="text-xs text-[#8B9BB4]">Analyse en cours…</p>
         </div>
       )}
 
+      {/* État : succès */}
       {status === 'success' && state.result && (
-        <div className="rounded-xl p-3 space-y-3"
+        <div className="rounded-xl p-3 space-y-2.5"
           style={{ background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.2)' }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <CheckCircle size={14} className="text-[#10B981]" strokeWidth={2} />
-              <p className="text-xs font-semibold text-[#10B981]">Importé avec succès</p>
+              <CheckCircle size={13} className="text-[#10B981]" strokeWidth={2} />
+              <p className="text-xs font-semibold text-[#10B981]">Import réussi</p>
             </div>
-            {/* Badge persistance IA */}
-            {slot.needsEdition && (
+            {state.result._saved && (
               <span className="text-2xs px-2 py-0.5 rounded-full font-semibold"
-                style={isSaved
-                  ? { background: 'rgba(6,142,234,0.15)', color: '#21AAFA', border: '1px solid rgba(6,142,234,0.25)' }
-                  : { background: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.2)' }
-                }>
-                {isSaved ? `Sauvegardé · ${editionName}` : 'Non lié à une édition'}
+                style={{ background: 'rgba(6,142,234,0.15)', color: '#21AAFA', border: '1px solid rgba(6,142,234,0.25)' }}>
+                Sauvegardé · {editionName}
               </span>
             )}
           </div>
-
           <div className="grid grid-cols-2 gap-2">
-            {state.result.meta && (
-              <>
-                <div>
-                  <p className="text-2xs text-[#4A5568]">Lignes traitées</p>
-                  <p className="num text-sm font-bold text-white">{fmt.number(state.result.meta.rows)}</p>
-                </div>
-                <div>
-                  <p className="text-2xs text-[#4A5568]">Onglet lu</p>
-                  <p className="text-xs font-medium text-white truncate">{state.result.meta.sheet ?? '—'}</p>
-                </div>
-              </>
+            {state.result.meta?.rows != null && (
+              <div>
+                <p className="text-2xs text-[#4A5568]">Lignes traitées</p>
+                <p className="num text-sm font-bold text-white">{fmt.number(state.result.meta.rows)}</p>
+              </div>
             )}
-            {state.result.kpi && (
-              <>
-                <div>
-                  <p className="text-2xs text-[#4A5568]">CA HT calculé</p>
-                  <p className="num text-sm font-bold text-white">{fmt.currency(state.result.kpi.ca_ht)}</p>
-                </div>
-                <div>
-                  <p className="text-2xs text-[#4A5568]">Clients uniques</p>
-                  <p className="num text-sm font-bold text-white">{fmt.number(state.result.kpi.n_clients)}</p>
-                </div>
-                <div>
-                  <p className="text-2xs text-[#4A5568]">Transactions</p>
-                  <p className="num text-sm font-bold text-white">{fmt.number(state.result.kpi.n_transac)}</p>
-                </div>
-                <div>
-                  <p className="text-2xs text-[#4A5568]">Panier moyen</p>
-                  <p className="num text-sm font-bold text-white">{fmt.currency(state.result.kpi.panier_moyen)}</p>
-                </div>
-              </>
+            {state.result.nb_commandes != null && (
+              <div>
+                <p className="text-2xs text-[#4A5568]">Commandes</p>
+                <p className="num text-sm font-bold text-white">{fmt.number(state.result.nb_commandes)}</p>
+              </div>
             )}
-            {state.result.kpi_billetterie && (
-              <>
-                <div>
-                  <p className="text-2xs text-[#4A5568]">Scans entrée</p>
-                  <p className="num text-sm font-bold text-white">{fmt.number(state.result.kpi_billetterie.total_scans)}</p>
-                </div>
-                <div>
-                  <p className="text-2xs text-[#4A5568]">Invitations scannées</p>
-                  <p className="num text-sm font-bold text-white">{fmt.number(state.result.kpi_billetterie.nb_invitations_scannees)}</p>
-                </div>
-              </>
+            {state.result.ca_total != null && (
+              <div>
+                <p className="text-2xs text-[#4A5568]">CA total</p>
+                <p className="num text-sm font-bold text-white">{fmt.currency(state.result.ca_total)}</p>
+              </div>
+            )}
+            {state.result.kpi?.ca_ht != null && (
+              <div>
+                <p className="text-2xs text-[#4A5568]">CA HT</p>
+                <p className="num text-sm font-bold text-white">{fmt.currency(state.result.kpi.ca_ht)}</p>
+              </div>
+            )}
+            {state.result.kpi?.n_clients != null && (
+              <div>
+                <p className="text-2xs text-[#4A5568]">Clients</p>
+                <p className="num text-sm font-bold text-white">{fmt.number(state.result.kpi.n_clients)}</p>
+              </div>
+            )}
+            {state.result._dedup?.mode && (
+              <div>
+                <p className="text-2xs text-[#4A5568]">Mode dédup</p>
+                <p className="text-xs font-semibold text-white capitalize">{state.result._dedup.mode}</p>
+              </div>
             )}
           </div>
-
-          {/* Top familles si dispo */}
-          {state.result.kpi?.top_familles && Object.keys(state.result.kpi.top_familles).length > 0 && (
-            <div className="pt-2 border-t border-[#1A2840]">
-              <p className="text-2xs text-[#4A5568] mb-1.5">Top familles produits</p>
-              <div className="flex flex-wrap gap-1.5">
-                {Object.entries(state.result.kpi.top_familles)
-                  .sort((a, b) => b[1] - a[1])
-                  .slice(0, 5)
-                  .map(([fam, ca]) => (
-                    <span key={fam} className="text-2xs px-2 py-0.5 rounded-full"
-                      style={{ background: 'rgba(6,142,234,0.1)', color: '#21AAFA', border: '1px solid rgba(6,142,234,0.15)' }}>
-                      {fam} · {fmt.currency(ca)}
-                    </span>
-                  ))
-                }
-              </div>
-            </div>
-          )}
-
-          {/* Profil client si dispo */}
-          {state.result.profil?.genre && Object.keys(state.result.profil.genre).length > 0 && (
-            <div className="pt-2 border-t border-[#1A2840]">
-              <p className="text-2xs text-[#4A5568] mb-1.5">Profil client détecté</p>
-              <div className="flex gap-2">
-                {Object.entries(state.result.profil.genre).map(([g, n]) => (
-                  <span key={g} className="text-2xs px-2 py-0.5 rounded-full"
-                    style={{ background: 'rgba(139,92,246,0.1)', color: '#A78BFA', border: '1px solid rgba(139,92,246,0.15)' }}>
-                    {g} · {fmt.number(n)}
-                  </span>
-                ))}
-              </div>
-            </div>
+          {state.result.source_detected && (
+            <p className="text-2xs" style={{ color: '#4A5568' }}>
+              Source détectée : <span className="text-[#8B9BB4] font-medium">{state.result.source_label ?? state.result.source_detected}</span>
+            </p>
           )}
         </div>
       )}
 
+      {/* État : erreur */}
       {status === 'error' && (
-        <div className="flex items-center gap-2 p-3 rounded-xl"
+        <div className="flex items-start gap-2 p-3 rounded-xl"
           style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)' }}>
-          <AlertCircle size={14} className="text-[#EF4444] flex-shrink-0" strokeWidth={2} />
-          <p className="text-xs text-[#EF4444]">{state.error ?? 'Erreur de traitement'}</p>
+          <AlertCircle size={13} className="text-[#EF4444] flex-shrink-0 mt-0.5" strokeWidth={2} />
+          <p className="text-xs text-[#EF4444] leading-snug">{state.error ?? 'Erreur lors du traitement du fichier'}</p>
         </div>
       )}
 
       {/* Modules alimentés */}
-      <div className="flex flex-wrap gap-1.5 pt-1 border-t border-[#1A2840]">
-        <p className="text-2xs text-[#4A5568] w-full mb-0.5">Modules alimentés :</p>
-        {slot.modules.map(m => (
-          <span key={m} className="text-2xs px-2 py-0.5 rounded-full"
-            style={{
-              background: status === 'success' ? `${color}15` : 'rgba(74,85,104,0.2)',
-              color:      status === 'success' ? color : '#4A5568',
-              border:     `1px solid ${status === 'success' ? `${color}30` : 'transparent'}`,
-            }}>
-            {m}
-          </span>
-        ))}
+      <div className="pt-1 border-t border-[#1A2840]">
+        <p className="text-2xs text-[#4A5568] mb-1.5">Modules alimentés :</p>
+        <div className="flex flex-wrap gap-1.5">
+          {slot.modules.map(m => (
+            <span key={m} className="text-2xs px-2 py-0.5 rounded-full"
+              style={{
+                background: status === 'success' ? `${color}15` : 'rgba(74,85,104,0.15)',
+                color:      status === 'success' ? color : '#4A5568',
+                border:     `1px solid ${status === 'success' ? `${color}30` : 'transparent'}`,
+              }}>
+              {m}
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   )
 }
 
+// ── Historique des imports ────────────────────────────────────────────────────
+function ImportHistory({ editionId }) {
+  const [imports,  setImports]  = useState([])
+  const [loading,  setLoading]  = useState(false)
+  const [open,     setOpen]     = useState(false)
+  const [rolling,  setRolling]  = useState(null)
+
+  useEffect(() => {
+    if (!editionId || !open) return
+    setLoading(true)
+    fetch(`${API}/api/imports/${editionId}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setImports(Array.isArray(data) ? data : []))
+      .catch(() => setImports([]))
+      .finally(() => setLoading(false))
+  }, [editionId, open])
+
+  async function handleRollback(importId) {
+    if (!window.confirm('Annuler cet import ? Les données seront recalculées sans ce fichier.')) return
+    setRolling(importId)
+    try {
+      await fetch(`${API}/api/imports/${importId}/rollback?edition_id=${editionId}`, { method: 'DELETE' })
+      const fresh = await fetch(`${API}/api/imports/${editionId}`).then(r => r.json())
+      setImports(Array.isArray(fresh) ? fresh : [])
+    } catch { /* ignore */ }
+    setRolling(null)
+  }
+
+  if (!editionId) return null
+
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ background: '#0D1526', border: '1px solid #1A2840' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-5 py-4 transition hover:bg-[#111D33]"
+      >
+        <div className="flex items-center gap-3">
+          <Clock size={15} style={{ color: '#8B9BB4' }} strokeWidth={1.8} />
+          <p className="text-sm font-semibold text-white">Historique des imports</p>
+          {imports.length > 0 && (
+            <span className="text-2xs px-2 py-0.5 rounded-full font-semibold"
+              style={{ background: 'rgba(6,142,234,0.12)', color: '#21AAFA', border: '1px solid rgba(6,142,234,0.2)' }}>
+              {imports.length} import{imports.length > 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+        {open ? <ChevronDown size={14} className="text-[#4A5568]" /> : <ChevronRight size={14} className="text-[#4A5568]" />}
+      </button>
+
+      {open && (
+        <div className="px-5 pb-5 space-y-2 border-t border-[#1A2840]" style={{ paddingTop: '1rem' }}>
+          {loading && (
+            <div className="flex items-center gap-2 py-4">
+              <RefreshCw size={13} className="animate-spin text-[#4A5568]" />
+              <p className="text-xs text-[#4A5568]">Chargement…</p>
+            </div>
+          )}
+          {!loading && imports.length === 0 && (
+            <p className="text-xs text-[#4A5568] py-4 text-center">Aucun import pour cette édition.</p>
+          )}
+          {!loading && imports.map(imp => (
+            <div key={imp.id}
+              className="flex items-start justify-between gap-3 p-3 rounded-xl"
+              style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid #1A2840' }}>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-xs font-semibold text-white truncate">{imp.filename}</p>
+                  <span className="text-2xs px-1.5 py-0.5 rounded flex-shrink-0"
+                    style={{ background: 'rgba(16,185,129,0.1)', color: '#10B981' }}>
+                    {imp.source_label ?? imp.source}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 flex-wrap">
+                  {imp.nb_commandes && (
+                    <p className="num text-2xs text-[#8B9BB4]">{fmt.number(imp.nb_commandes)} cmd</p>
+                  )}
+                  {imp.ca_total && (
+                    <p className="num text-2xs text-[#8B9BB4]">{fmt.currency(imp.ca_total)}</p>
+                  )}
+                  {imp.new_rows != null && (
+                    <p className="text-2xs text-[#4A5568]">+{fmt.number(imp.new_rows)} lignes</p>
+                  )}
+                  <p className="text-2xs text-[#4A5568]">
+                    {new Date(imp.imported_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => handleRollback(imp.id)}
+                disabled={rolling === imp.id}
+                className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-2xs font-semibold transition hover:bg-[#1A2840]"
+                style={{ color: '#4A5568', border: '1px solid #1A2840' }}
+                title="Annuler cet import"
+              >
+                {rolling === imp.id
+                  ? <RefreshCw size={11} className="animate-spin" />
+                  : <RotateCcw size={11} strokeWidth={2} />
+                }
+                Annuler
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Page principale ───────────────────────────────────────────────────────────
 export default function Import() {
-  const [states, setStates]   = useState({})
-  const { activeEdition }     = useEdition()
+  const [states, setStates] = useState({})
+  const { activeEdition }   = useEdition()
   const editionId   = activeEdition?.id   ?? ''
   const editionName = activeEdition?.name ?? ''
 
@@ -289,9 +370,13 @@ export default function Import() {
     const form = new FormData()
     form.append('file', file)
 
-    let url = `${API}${slot.endpoint}`
-    if (id === 'conso' && editionId) {
-      url += `?edition_id=${encodeURIComponent(editionId)}`
+    let url = `${API}${slot.endpoint}?source=${slot.sourceParam}`
+    if (editionId) url += `&edition_id=${encodeURIComponent(editionId)}`
+
+    // Pour la conso, utiliser l'endpoint dédié qui persiste profil + KPIs
+    if (id === 'conso') {
+      url = `${API}/api/upload/conso`
+      if (editionId) url += `?edition_id=${encodeURIComponent(editionId)}`
     }
 
     try {
@@ -323,8 +408,8 @@ export default function Import() {
           <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
             style={{ background: editionId ? 'rgba(99,102,241,0.15)' : 'rgba(245,158,11,0.12)' }}>
             {editionId
-              ? <Link size={15} style={{ color: '#A5B4FC' }} strokeWidth={2} />
-              : <AlertTriangle size={15} style={{ color: '#F59E0B' }} strokeWidth={2} />
+              ? <Link size={14} style={{ color: '#A5B4FC' }} strokeWidth={2} />
+              : <AlertTriangle size={14} style={{ color: '#F59E0B' }} strokeWidth={2} />
             }
           </div>
           <div>
@@ -334,7 +419,7 @@ export default function Import() {
                   Édition active : <span style={{ color: '#A5B4FC' }}>{editionName}</span>
                 </p>
                 <p className="text-xs text-[#8B9BB4] mt-0.5">
-                  Les fichiers importés seront liés à cette édition et disponibles pour les rapports IA.
+                  Les imports seront liés à cette édition et disponibles pour les rapports IA.
                 </p>
               </>
             ) : (
@@ -343,7 +428,7 @@ export default function Import() {
                   Aucune édition sélectionnée
                 </p>
                 <p className="text-xs text-[#8B9BB4] mt-0.5">
-                  Sélectionnez une édition dans le menu en haut pour lier les imports aux rapports IA.
+                  Choisissez une édition dans le sélecteur en haut à droite avant d'importer.
                 </p>
               </>
             )}
@@ -357,27 +442,7 @@ export default function Import() {
         )}
       </div>
 
-      {/* Intro */}
-      <div className="grid grid-cols-3 gap-4">
-        {[
-          { icon: HardDrive, label: 'Données locales',       sub: 'Aucune donnée ne quitte votre poste',     color: '#10B981' },
-          { icon: Zap,       label: 'Traitement instantané', sub: 'Calcul immédiat de tous les KPI',          color: '#068EEA' },
-          { icon: RefreshCw, label: 'Mise à jour flexible',  sub: 'Re-importer à tout moment',                color: '#8B5CF6' },
-        ].map(({ icon: Icon, label, sub, color }) => (
-          <div key={label} className="card p-4 flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{ background: `${color}18` }}>
-              <Icon size={15} style={{ color }} strokeWidth={1.8} />
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-white">{label}</p>
-              <p className="text-2xs text-[#8B9BB4] mt-0.5 leading-snug">{sub}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Upload slots */}
+      {/* Slots d'import */}
       <div className="grid xl:grid-cols-2 gap-5">
         {SLOTS.map(slot => (
           <FileSlot
@@ -392,60 +457,65 @@ export default function Import() {
         ))}
       </div>
 
-      {/* Status global */}
+      {/* Confirmation toutes sources chargées */}
       {allLoaded && (
         <div className="p-4 rounded-2xl flex items-center gap-4 animate-slide-up"
           style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
           <CheckCircle size={20} className="text-[#10B981] flex-shrink-0" strokeWidth={2} />
           <div>
-            <p className="text-sm font-semibold text-[#10B981]">Toutes les sources sont chargées</p>
+            <p className="text-sm font-semibold text-[#10B981]">Toutes les sources sont importées</p>
             <p className="text-xs text-[#8B9BB4] mt-0.5">
-              Les modules sont alimentés avec les données importées.
-              {editionId && ` Les données de consommation sont sauvegardées pour "${editionName}" et disponibles pour les rapports IA.`}
+              Les modules analytiques sont alimentés.
+              {editionId && ` Les données sont liées à "${editionName}" et disponibles pour les rapports IA.`}
             </p>
           </div>
         </div>
       )}
 
-      {/* Infos sources statiques */}
-      <SectionCard
-        title="Données de référence pré-chargées"
-        subtitle="Disponibles sans import — extraites lors de la configuration initiale"
-        action={
-          <span className="text-2xs px-2 py-0.5 rounded-full font-semibold"
-            style={{ background: 'rgba(6,142,234,0.12)', color: '#21AAFA', border: '1px solid rgba(6,142,234,0.2)' }}>
-            Toujours actif
-          </span>
-        }
-      >
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { label: 'Consommation 2023',         rows: '94 115 lignes', src: 'export_consommation_2023.xlsx',    ok: true  },
-            { label: 'Consommation 2024',         rows: '71 269 lignes', src: 'export_consommation_2024.xlsx',    ok: true  },
-            { label: 'Consommation 2025',         rows: '91 037 lignes', src: 'export_consommation_2025.xlsx',    ok: true  },
-            { label: 'Billetterie 2024',          rows: '9 078 billets', src: 'export_billetterie_2024.xlsx',     ok: true  },
-            { label: 'TDB Billetterie 2025',      rows: '19 onglets',    src: 'tdb_billetterie_2025.xlsx',        ok: true  },
-            { label: 'Stocks édition+1',          rows: '5 zones × 7h', src: 'previsions_stock_edition_n1.xlsx', ok: true  },
-            { label: 'Profil client (formulaire)',rows: '3 299 rép.',   src: 'formulaire_participant_2025.xlsx',  ok: true  },
-            { label: 'Données 2022',              rows: '~100k lignes', src: 'export_historique_2022.xlsx',       ok: false },
-          ].map(({ label, rows, src, ok }) => (
-            <div key={label} className="flex items-start gap-2.5 p-2.5 rounded-xl"
-              style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid #1A2840' }}>
-              <div className="mt-0.5 flex-shrink-0">
-                {ok
-                  ? <CheckCircle size={13} className="text-[#10B981]" strokeWidth={2} />
-                  : <Info size={13} className="text-[#4A5568]" strokeWidth={2} />
-                }
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-white leading-tight">{label}</p>
-                <p className="num text-2xs text-[#8B9BB4] mt-0.5">{rows}</p>
-                <p className="text-2xs text-[#4A5568] truncate mt-0.5">{src}</p>
-              </div>
-            </div>
-          ))}
+      {/* Historique des imports */}
+      <ImportHistory editionId={editionId} />
+
+      {/* Formats acceptés */}
+      <div className="rounded-2xl p-5" style={{ background: '#0D1526', border: '1px solid #1A2840' }}>
+        <div className="flex items-center gap-2 mb-4">
+          <Info size={14} style={{ color: '#8B9BB4' }} strokeWidth={1.8} />
+          <p className="text-sm font-semibold text-white">Formats et sources acceptés</p>
         </div>
-      </SectionCard>
+        <div className="grid xl:grid-cols-2 gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#4A5568', fontSize: '0.6rem' }}>
+              Formats de fichiers
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {['.xlsx', '.xls', '.csv', '.parquet', '.json', '.tsv'].map(f => (
+                <span key={f} className="text-xs font-mono px-2 py-1 rounded"
+                  style={{ background: 'rgba(255,255,255,0.04)', color: '#8B9BB4', border: '1px solid #1A2840' }}>
+                  {f}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#4A5568', fontSize: '0.6rem' }}>
+              Sources billetterie reconnues
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {['Weezevent', 'Bizouk', 'BilletWeb', 'Eventbrite', 'Shotgun', 'Ticketmaster', 'Generic'].map(s => (
+                <span key={s} className="text-xs px-2 py-1 rounded"
+                  style={{ background: 'rgba(245,158,11,0.08)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.15)' }}>
+                  {s}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="mt-4 p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid #1A2840' }}>
+          <p className="text-xs text-[#8B9BB4] leading-relaxed">
+            La source est détectée automatiquement à l'import. Les doublons sont éliminés par identifiant de commande.
+            Re-importer un fichier déjà chargé ne crée pas de doublon.
+          </p>
+        </div>
+      </div>
 
     </div>
   )
