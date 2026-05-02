@@ -79,8 +79,9 @@ function fileToBase64(file) {
 
 export default function AiReport({ apiKey }) {
   const { activeEdition } = useEdition()
-  const editionId   = activeEdition?.id ?? null
+  const editionId   = activeEdition?.id   ?? null
   const editionName = activeEdition?.name ?? 'Édition'
+  const editionYear = activeEdition?.year ?? null
 
   const [selectedType, setSelectedType] = useState('executive')
   const [open,    setOpen]    = useState(false)
@@ -131,9 +132,10 @@ export default function AiReport({ apiKey }) {
 
     try {
       const body = {
-        api_key:    apiKey ?? '',
-        image_b64:  imageB64  ?? null,
-        image_mime: imageMime ?? null,
+        api_key:      apiKey ?? '',
+        image_b64:    imageB64    ?? null,
+        image_mime:   imageMime   ?? null,
+        edition_year: editionYear ?? null,   // permet le fallback edition_analytics
       }
 
       const res = await fetch(

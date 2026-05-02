@@ -178,7 +178,11 @@ def _safe_alter(sql: str):
 
 
 def _seed_edition_analytics():
-    """Insère les données historiques 2023-2025 si la table est vide."""
+    """
+    Seed idempotent des données historiques 2023-2025.
+    - INSERT OR IGNORE pour les nouvelles lignes
+    - UPDATE ... WHERE {champ} IS NULL pour réparer sans écraser
+    """
     now = datetime.utcnow().isoformat()
     seed = [
         {
@@ -228,6 +232,7 @@ def _seed_edition_analytics():
     ]
     with get_db() as conn:
         for row in seed:
+            # Insérer si absent
             conn.execute("""
                 INSERT OR IGNORE INTO edition_analytics
                   (id, year, edition_name, ca_conso, ca_billet, ca_total,
@@ -244,6 +249,29 @@ def _seed_edition_analytics():
                 row['affluence_json'], row['familles_json'], row['pass_culture_json'],
                 row['notes'], now, now,
             ))
+            # Réparer les champs NULL si la ligne existait déjà (ex: écrasée par upsert)
+            # Ne met à jour que les champs qui sont NULL — ne touche pas aux champs déjà renseignés
+            numeric_fields = [
+                ('ca_conso', row['ca_conso']), ('ca_billet', row['ca_billet']),
+                ('ca_total', row['ca_total']), ('festivaliers', row['festivaliers']),
+                ('clients', row['clients']), ('transactions', row['transactions']),
+                ('panier_conso', row['panier_conso']),
+                ('invitations_total', row['invitations_total']),
+                ('invitations_valeur', row['invitations_valeur']),
+                ('invitations_entrees', row['invitations_entrees']),
+                ('invitations_pct_freq', row['invitations_pct_freq']),
+            ]
+            json_fields = [
+                ('affluence_json', row['affluence_json']),
+                ('familles_json', row['familles_json']),
+                ('pass_culture_json', row['pass_culture_json']),
+            ]
+            for field, value in numeric_fields + json_fields:
+                if value is not None:
+                    conn.execute(
+                        f"UPDATE edition_analytics SET {field}=?, updated_at=? WHERE year=? AND {field} IS NULL",
+                        (value, now, row['year'])
+                    )
 
 
 # ── CONSO STATE ───────────────────────────────────────────────────────────────
@@ -316,40 +344,92 @@ def get_all_edition_analytics() -> list:
 
 def upsert_edition_analytics(year: int, data: dict) -> str:
     """Crée ou met à jour les KPIs d'une édition par année.
-    Accepte profil = { genre: [{name, pct, n}], tranches: [{age, pct, n}], comportement: [...] }
+    Stratégie MERGE : ne met à jour que les champs fournis dans data.
+    Les champs non fournis (None / absents) conservent leur valeur existante.
     """
     now = datetime.utcnow().isoformat()
     with get_db() as conn:
         existing = conn.execute(
-            "SELECT id FROM edition_analytics WHERE year = ?", (year,)
+            "SELECT * FROM edition_analytics WHERE year = ?", (year,)
         ).fetchone()
-        eid = existing['id'] if existing else f"ea-{year}-{str(uuid.uuid4())[:8]}"
 
-        conn.execute("""
-            INSERT OR REPLACE INTO edition_analytics
-              (id, year, edition_name, ca_conso, ca_billet, ca_total,
-               festivaliers, clients, transactions, panier_conso,
-               invitations_total, invitations_valeur, invitations_entrees, invitations_pct_freq,
-               affluence_json, familles_json, pass_culture_json, profil_json,
-               notes, created_at, updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-              COALESCE((SELECT created_at FROM edition_analytics WHERE year=?), ?),
-              ?)
-        """, (
-            eid, year,
-            data.get('edition_name', f'Édition {year}'),
-            data.get('ca_conso'), data.get('ca_billet'), data.get('ca_total'),
-            data.get('festivaliers'), data.get('clients'), data.get('transactions'),
-            data.get('panier_conso'),
-            data.get('invitations_total'), data.get('invitations_valeur'),
-            data.get('invitations_entrees'), data.get('invitations_pct_freq'),
-            json.dumps(data['affluence'],    ensure_ascii=False) if data.get('affluence')    else None,
-            json.dumps(data['familles'],     ensure_ascii=False) if data.get('familles')     else None,
-            json.dumps(data['pass_culture'], ensure_ascii=False) if data.get('pass_culture') else None,
-            json.dumps(data['profil'],       ensure_ascii=False) if data.get('profil')       else None,
-            data.get('notes'),
-            year, now, now,
-        ))
+        if existing:
+            # MERGE : ne pas écraser un champ existant avec None
+            ex = dict(existing)
+            eid = ex['id']
+
+            def _keep(field, new_val, json_key=None):
+                """Retourne new_val si fourni, sinon conserve la valeur existante."""
+                if json_key:
+                    return json.dumps(new_val, ensure_ascii=False) if new_val is not None else ex.get(json_key)
+                return new_val if new_val is not None else ex.get(field)
+
+            conn.execute("""
+                UPDATE edition_analytics SET
+                  edition_name      = ?,
+                  ca_conso          = ?,
+                  ca_billet         = ?,
+                  ca_total          = ?,
+                  festivaliers      = ?,
+                  clients           = ?,
+                  transactions      = ?,
+                  panier_conso      = ?,
+                  invitations_total = ?,
+                  invitations_valeur= ?,
+                  invitations_entrees=?,
+                  invitations_pct_freq=?,
+                  affluence_json    = ?,
+                  familles_json     = ?,
+                  pass_culture_json = ?,
+                  profil_json       = ?,
+                  notes             = ?,
+                  updated_at        = ?
+                WHERE year = ?
+            """, (
+                _keep('edition_name',  data.get('edition_name')),
+                _keep('ca_conso',      data.get('ca_conso')),
+                _keep('ca_billet',     data.get('ca_billet')),
+                _keep('ca_total',      data.get('ca_total')),
+                _keep('festivaliers',  data.get('festivaliers')),
+                _keep('clients',       data.get('clients')),
+                _keep('transactions',  data.get('transactions')),
+                _keep('panier_conso',  data.get('panier_conso')),
+                _keep('invitations_total',   data.get('invitations_total')),
+                _keep('invitations_valeur',  data.get('invitations_valeur')),
+                _keep('invitations_entrees', data.get('invitations_entrees')),
+                _keep('invitations_pct_freq',data.get('invitations_pct_freq')),
+                _keep('affluence_json',  data.get('affluence'),    'affluence_json'),
+                _keep('familles_json',   data.get('familles'),     'familles_json'),
+                _keep('pass_culture_json',data.get('pass_culture'),'pass_culture_json'),
+                _keep('profil_json',     data.get('profil'),       'profil_json'),
+                _keep('notes',         data.get('notes')),
+                now, year,
+            ))
+        else:
+            eid = f"ea-{year}-{str(uuid.uuid4())[:8]}"
+            conn.execute("""
+                INSERT INTO edition_analytics
+                  (id, year, edition_name, ca_conso, ca_billet, ca_total,
+                   festivaliers, clients, transactions, panier_conso,
+                   invitations_total, invitations_valeur, invitations_entrees, invitations_pct_freq,
+                   affluence_json, familles_json, pass_culture_json, profil_json,
+                   notes, created_at, updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                eid, year,
+                data.get('edition_name', f'Édition {year}'),
+                data.get('ca_conso'), data.get('ca_billet'), data.get('ca_total'),
+                data.get('festivaliers'), data.get('clients'), data.get('transactions'),
+                data.get('panier_conso'),
+                data.get('invitations_total'), data.get('invitations_valeur'),
+                data.get('invitations_entrees'), data.get('invitations_pct_freq'),
+                json.dumps(data['affluence'],    ensure_ascii=False) if data.get('affluence')    else None,
+                json.dumps(data['familles'],     ensure_ascii=False) if data.get('familles')     else None,
+                json.dumps(data['pass_culture'], ensure_ascii=False) if data.get('pass_culture') else None,
+                json.dumps(data['profil'],       ensure_ascii=False) if data.get('profil')       else None,
+                data.get('notes'),
+                now, now,
+            ))
     return eid
 
 

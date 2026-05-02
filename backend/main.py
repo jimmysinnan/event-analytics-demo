@@ -613,15 +613,18 @@ def download_report(edition_id: str, edition_name: str = "Édition"):
 
 # ── Rapports IA — Claude Sonnet 4.6 ───────────────────────────────────────────
 
-def _get_kpis_for_edition(edition_id: str) -> tuple:
+def _get_kpis_for_edition(edition_id: str, edition_year: int = None) -> tuple:
     """
     Retourne (kpis, state) pour une édition.
-    Agrège : billetterie (imports) + consommation/profil (conso_state) + historique (edition_analytics).
+    Agrège : billetterie (imports actifs) + fallback edition_analytics + conso_state.
+
+    edition_year : année de l'édition (optionnel, permet le fallback sur edition_analytics)
     """
     state = get_state(edition_id)
     kpis  = {}
 
     # ── Billetterie : KPIs avancés du dernier import actif ────────────────────
+    has_active_import = False
     with get_db() as conn:
         row = conn.execute("""
             SELECT raw_json FROM imports
@@ -630,42 +633,74 @@ def _get_kpis_for_edition(edition_id: str) -> tuple:
         """, (edition_id,)).fetchone()
     if row:
         kpis = json.loads(row['raw_json']).get('kpis_avances') or {}
+        has_active_import = bool(kpis)
 
     # ── Historique multi-éditions ─────────────────────────────────────────────
     hist = get_all_edition_analytics()
     kpis['historique_editions'] = hist
 
+    # ── Fallback KPIs macro depuis edition_analytics si pas d'import actif ────
+    # Quand aucun import billetterie n'est actif pour cette édition, on utilise
+    # les KPIs agrégés de edition_analytics (ca_billet, festivaliers, etc.)
+    # pour que l'IA ait au minimum des chiffres de référence.
+    if not has_active_import and edition_year:
+        year_data = next((h for h in hist if h.get('year') == edition_year), None)
+        if year_data:
+            # Reconstituer une structure kpis_avances minimale depuis les données macro
+            kpis['_from_analytics'] = True
+            kpis['_analytics_year'] = edition_year
+            # Renseigner state avec les données de edition_analytics si state est vide
+            if not state.get('ca_total') and year_data.get('ca_billet'):
+                state = {**state,
+                    'ca_total':        year_data.get('ca_billet'),
+                    'nb_participants': year_data.get('festivaliers'),
+                }
+
     # ── Consommation + Profil client ──────────────────────────────────────────
-    # Source 1 : conso_state (upload fichier conso avec edition_id)
     conso = get_conso_state(edition_id)
 
-    # Source 2 : profil depuis edition_analytics (peut venir du formulaire ou d'une autre source)
-    # On cherche d'abord dans edition_analytics de l'année courante si disponible
+    # Profil depuis edition_analytics de l'année courante (formulaire participant)
     profil_from_analytics = None
-    if hist:
-        # Essayer de trouver l'édition correspondant à l'edition_id actif
-        # On prend la plus récente si pas de correspondance directe
+    if edition_year and hist:
+        year_data = next((h for h in hist if h.get('year') == edition_year), None)
+        if year_data and year_data.get('profil'):
+            profil_from_analytics = year_data['profil']
+    elif hist:
+        # Fallback : prendre le profil de la dernière année disponible
         for h in reversed(hist):
             if h.get('profil'):
                 profil_from_analytics = h['profil']
                 break
 
-    # Fusion : conso_state a la priorité sur edition_analytics pour les données fraîches
+    # Enrichissement : conso_state a la priorité sur edition_analytics
     profil_merged = {}
     if profil_from_analytics:
         profil_merged.update(profil_from_analytics)
     if conso and conso.get('profil'):
-        # Les données Weezpay (genre, age depuis colonnes) enrichissent si présentes
         profil_merged.update({k: v for k, v in conso['profil'].items() if v})
 
+    # KPI conso depuis edition_analytics si pas de conso_state
+    kpi_conso_fallback = {}
+    if not conso and edition_year:
+        year_data = next((h for h in hist if h.get('year') == edition_year), None)
+        if year_data:
+            kpi_conso_fallback = {
+                'ca_ht':        year_data.get('ca_conso'),
+                'n_clients':    year_data.get('clients'),
+                'n_transac':    year_data.get('transactions'),
+                'panier_moyen': year_data.get('panier_conso'),
+                'top_familles': {f['name']: f['ca'] for f in (year_data.get('familles') or [])},
+            }
+
     kpis['module_conso'] = {
-        'disponible':          bool(conso),
-        'kpi':                 conso.get('kpi', {})       if conso else {},
+        'disponible':          bool(conso) or bool(kpi_conso_fallback),
+        'kpi':                 conso.get('kpi', {}) if conso else kpi_conso_fallback,
         'ca_horaire':          conso.get('ca_horaire', []) if conso else [],
         'profil':              profil_merged,
         'profil_disponible':   bool(profil_merged),
-        'fichier':             conso.get('filename', '')  if conso else '',
+        'fichier':             conso.get('filename', '') if conso else '',
         'mis_a_jour':          conso.get('updated_at', '') if conso else '',
+        '_source':             'conso_state' if conso else ('edition_analytics' if kpi_conso_fallback else 'none'),
     }
 
     return kpis, state
@@ -694,10 +729,15 @@ async def ai_report_stream(
     except Exception:
         pass
 
-    api_key    = body.get('api_key', '')
-    image_b64  = body.get('image_b64') or None
-    image_mime = body.get('image_mime') or None
-    kpis, state = _get_kpis_for_edition(edition_id)
+    api_key        = body.get('api_key', '')
+    image_b64      = body.get('image_b64') or None
+    image_mime     = body.get('image_mime') or None
+    edition_year   = body.get('edition_year')           # int ou None
+    if edition_year:
+        try: edition_year = int(edition_year)
+        except (ValueError, TypeError): edition_year = None
+
+    kpis, state = _get_kpis_for_edition(edition_id, edition_year)
 
     return StreamingResponse(
         generate_ai_report_stream(report_type, kpis, state, edition_name, api_key, image_b64, image_mime),

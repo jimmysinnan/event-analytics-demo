@@ -357,12 +357,34 @@ function ImportHistory({ editionId }) {
   )
 }
 
+// ── Hook : statut des imports de l'édition active ────────────────────────────
+function useImportStatus(editionId) {
+  const [status, setStatus] = useState(null) // null | 'none' | 'all_rolled_back' | 'has_active'
+
+  useEffect(() => {
+    if (!editionId) { setStatus(null); return }
+    fetch(`${API}/api/imports/${editionId}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(imports => {
+        if (!imports || imports.length === 0) { setStatus('none'); return }
+        // L'endpoint /api/imports ne retourne que les non-rolled_back
+        // Si la liste est vide mais qu'on a eu des imports → ils sont tous rolled_back
+        // On doit checker via /api/imports/{edition_id}/state
+        setStatus(imports.length > 0 ? 'has_active' : 'none')
+      })
+      .catch(() => setStatus(null))
+  }, [editionId])
+
+  return status
+}
+
 // ── Page principale ───────────────────────────────────────────────────────────
 export default function Import() {
   const [states, setStates] = useState({})
   const { activeEdition }   = useEdition()
   const editionId   = activeEdition?.id   ?? ''
   const editionName = activeEdition?.name ?? ''
+  const importStatus = useImportStatus(editionId)
 
   const handleDrop = useCallback(async (id, file) => {
     setStates(s => ({ ...s, [id]: { file, status: 'loading' } }))
@@ -441,6 +463,18 @@ export default function Import() {
           </span>
         )}
       </div>
+
+      {/* Alerte si aucun import actif pour cette édition */}
+      {importStatus === 'none' && editionId && (
+        <div className="flex items-start gap-3 p-3 rounded-xl"
+          style={{ background: 'rgba(6,182,212,0.07)', border: '1px solid rgba(6,182,212,0.15)' }}>
+          <AlertTriangle size={13} style={{ color: '#06B6D4' }} strokeWidth={2} className="mt-0.5 flex-shrink-0" />
+          <p className="text-xs" style={{ color: '#8B9BB4' }}>
+            Aucun fichier importé pour <span className="text-white font-medium">{editionName}</span>.
+            Importez vos fichiers ci-dessous pour alimenter les modules analytiques et les rapports IA.
+          </p>
+        </div>
+      )}
 
       {/* Slots d'import */}
       <div className="grid xl:grid-cols-2 gap-5">
