@@ -13,12 +13,20 @@ Architecture prévue pour migrer vers PostgreSQL/Supabase :
 import sqlite3
 import json
 import uuid
+import os
 from datetime import datetime
 from pathlib import Path
 from contextlib import contextmanager
 
-# Chemin du fichier SQLite — à côté du backend
-DB_PATH = Path(__file__).parent / "data.db"
+# Chemin du fichier SQLite.
+# Priorité : variable d'environnement SQLITE_DB_PATH (hébergement dédié)
+# Défaut   : data.db dans le dossier du backend (mode local/dev)
+_db_env = os.environ.get('SQLITE_DB_PATH', '').strip()
+if _db_env:
+    DB_PATH = Path(_db_env)
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)  # crée le dossier si absent
+else:
+    DB_PATH = Path(__file__).parent / "data.db"
 
 
 # ── Connexion ──────────────────────────────────────────────────────────────────

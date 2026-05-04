@@ -26,20 +26,62 @@ from database import (
     save_conso_state, get_conso_state,
 )
 
+# ── Variables d'environnement ─────────────────────────────────────────────────
+_APP_MODE    = os.environ.get('APP_MODE',    'demo').strip().lower()
+_APP_NAME    = os.environ.get('APP_NAME',    'Event Analytics').strip()
+_CLIENT_SLUG = os.environ.get('CLIENT_SLUG', '').strip()
+_API_TOKEN   = os.environ.get('API_SECRET_TOKEN', '').strip()
+_UPLOAD_DIR  = os.environ.get('UPLOAD_DIR',  '').strip()
+_EXPORT_DIR  = os.environ.get('EXPORT_DIR',  '').strip()
+_LOG_DIR     = os.environ.get('LOG_DIR',     '').strip()
+
+# ── Validation au démarrage en mode production ────────────────────────────────
+# En mode production, certaines variables sont obligatoires.
+# Si une variable critique manque, le backend refuse de démarrer avec une erreur claire.
+_REQUIRED_IN_PRODUCTION = {
+    'CLIENT_SLUG':       _CLIENT_SLUG,
+    'API_SECRET_TOKEN':  _API_TOKEN,
+    'SQLITE_DB_PATH':    os.environ.get('SQLITE_DB_PATH', '').strip(),
+    'UPLOAD_DIR':        _UPLOAD_DIR,
+    'EXPORT_DIR':        _EXPORT_DIR,
+    'LOG_DIR':           _LOG_DIR,
+    'ALLOWED_ORIGINS':   os.environ.get('ALLOWED_ORIGINS', '').strip(),
+}
+
+if _APP_MODE == 'production':
+    _missing = [k for k, v in _REQUIRED_IN_PRODUCTION.items() if not v]
+    if _missing:
+        import sys
+        print('\n' + '='*60, flush=True)
+        print('ERREUR DEMARRAGE -- Variables manquantes en mode production :', flush=True)
+        for k in _missing:
+            print(f'  [MANQUANT] {k}', flush=True)
+        print('\nAjoutez ces variables dans /var/www/eventanalytics/clients/[slug]/.env', flush=True)
+        print('='*60 + '\n', flush=True)
+        sys.exit(1)
+
+# ── Créer les répertoires de données au démarrage ─────────────────────────────
+for _dir in filter(None, [_UPLOAD_DIR, _EXPORT_DIR, _LOG_DIR]):
+    os.makedirs(_dir, exist_ok=True)
+
 app = FastAPI(title="Event Analytics API", version="2.0.0")
 
 @app.on_event("startup")
 def startup():
     init_db()
 
-# CORS — origines autorisées + origines configurables via env
-_cors_origins = [
-    "http://localhost:5173", "http://localhost:4173",
-    "http://localhost:5174", "http://localhost:4174",
-]
-_extra_origins = os.environ.get('CORS_ORIGINS', '')
-if _extra_origins:
-    _cors_origins += [o.strip() for o in _extra_origins.split(',') if o.strip()]
+# ── CORS ──────────────────────────────────────────────────────────────────────
+# En mode production : ALLOWED_ORIGINS obligatoire (validé ci-dessus)
+# En mode local/demo : fallback sur les ports localhost standards
+_allowed_origins_env = os.environ.get('ALLOWED_ORIGINS', '').strip()
+if _allowed_origins_env:
+    _cors_origins = [o.strip() for o in _allowed_origins_env.split(',') if o.strip()]
+else:
+    _cors_origins = [
+        "http://localhost:5173", "http://localhost:4173",
+        "http://localhost:5174", "http://localhost:4174",
+        "http://localhost:8001",
+    ]
 
 app.add_middleware(
     CORSMiddleware,
@@ -49,22 +91,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Auth — token statique optionnel ───────────────────────────────────────────
-# Si API_SECRET_TOKEN est défini dans .env, toutes les requêtes doivent
-# inclure l'en-tête X-API-Token avec la valeur correspondante.
-# Laisser vide (défaut) pour désactiver en local.
-_API_TOKEN = os.environ.get('API_SECRET_TOKEN', '').strip()
-
+# ── Auth — token obligatoire en production, optionnel en local ────────────────
 @app.middleware('http')
 async def check_token(request: Request, call_next):
     if not _API_TOKEN:
         return await call_next(request)
-    # Laisser passer CORS preflight, health, docs
+    # Laisser passer CORS preflight et routes publiques
     if request.method == 'OPTIONS' or request.url.path in ('/', '/health', '/docs', '/openapi.json', '/redoc'):
         return await call_next(request)
     token = request.headers.get('X-API-Token', '')
     if token != _API_TOKEN:
-        return JSONResponse({'error': 'Unauthorized — X-API-Token requis'}, status_code=401)
+        return JSONResponse({'error': 'Unauthorized'}, status_code=401)
     return await call_next(request)
 
 
@@ -93,8 +130,12 @@ async def read_excel(file: UploadFile, sheet_name=0) -> pd.DataFrame:
 # ── Routes ─────────────────────────────────────────────────────────────────────
 @app.get("/")
 def root():
-    app_name = os.environ.get('APP_NAME', 'Event Analytics')
-    return {"status": "ok", "service": f"{app_name} API v2.0"}
+    return {
+        "status":  "ok",
+        "service": f"{_APP_NAME} API v2.0",
+        "client":  _CLIENT_SLUG or "local",
+        "mode":    _APP_MODE,
+    }
 
 
 @app.get("/health")
