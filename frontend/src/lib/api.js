@@ -1,6 +1,14 @@
 /**
  * Configuration API — Event Analytics
- * URL et headers centralisés, configurable via .env.local
+ *
+ * Comportement selon VITE_API_URL au moment du build :
+ *
+ *   VITE_API_URL=http://localhost:8001  → appels absolus  (dev local + package local)
+ *   VITE_API_URL=                       → appels relatifs (build hébergé — Nginx route /api/)
+ *   VITE_API_URL non défini             → fallback localhost:8001 (sécurité dev)
+ *
+ * NOTE SÉCURITÉ : ne jamais mettre ANTHROPIC_API_KEY dans ce fichier ou dans une
+ * variable VITE_*. La clé Anthropic reste exclusivement côté backend (.env serveur).
  */
 
 export const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8001'
