@@ -1,0 +1,52 @@
+# ============================================================
+# systemd service — Event Analytics : {{CLIENT_SLUG}}
+# Client   : {{CLIENT_NAME}}
+# Port     : {{CLIENT_PORT}}
+# Généré le: {{DATE}}
+#
+# Installation :
+#   sudo cp ce-fichier /etc/systemd/system/ea-{{CLIENT_SLUG}}.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable ea-{{CLIENT_SLUG}}
+#   sudo systemctl start  ea-{{CLIENT_SLUG}}
+# ============================================================
+
+[Unit]
+Description=Event Analytics — {{CLIENT_NAME}} ({{CLIENT_SLUG}})
+Documentation=https://github.com/jimmysinnan/event-analytics-demo
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+
+# Répertoire de travail = backend
+WorkingDirectory=/var/www/eventanalytics/app/backend
+
+# Chargement du .env client (toutes les variables d'env)
+EnvironmentFile=/var/www/eventanalytics/clients/{{CLIENT_SLUG}}/.env
+
+# Commande de démarrage
+ExecStart=/var/www/eventanalytics/app/.venv/bin/python \
+    -m uvicorn main:app \
+    --host 127.0.0.1 \
+    --port {{CLIENT_PORT}} \
+    --log-level info
+
+# Redémarrage automatique en cas d'erreur
+Restart=on-failure
+RestartSec=5s
+StartLimitIntervalSec=60s
+StartLimitBurst=3
+
+# Logs vers fichiers dédiés au client
+StandardOutput=append:/var/www/eventanalytics/clients/{{CLIENT_SLUG}}/logs/app.log
+StandardError=append:/var/www/eventanalytics/clients/{{CLIENT_SLUG}}/logs/error.log
+
+# Limites de ressources (ajuster selon le VPS)
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
