@@ -760,3 +760,12 @@ def list_pdfs():
             size_kb = None
         result.append({'key': key, 'filename': filename, 'exists': exists, 'size_kb': size_kb})
     return result
+
+
+
+# ── Frontend statique (package client) ────────────────────────────────────────
+# Si FRONTEND_BUILD_PATH est défini, le backend sert aussi le frontend compilé.
+# En mode dev, cette variable est absente → le frontend tourne séparément sur :5174.
+_frontend_dist = os.environ.get('FRONTEND_BUILD_PATH', '').strip()
+if _frontend_dist and os.path.isdir(_frontend_dist):
+    app.mount('/', StaticFiles(directory=_frontend_dist, html=True), name='frontend')

@@ -8,3 +8,6 @@ frontend\dist\
 .remember\
 setup-client.bat
 setup-client.exclude.txt
+build-client-package.bat
+pitch\
+plans\

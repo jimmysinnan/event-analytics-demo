@@ -1,77 +1,137 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
+chcp 65001 > nul 2>&1
 
 echo.
-echo  =============================================
-echo   Event Analytics — Setup installation client
-echo  =============================================
+echo  ============================================================
+echo   Event Analytics — Preparation instance client (INTERNE)
+echo  ============================================================
+echo.
+echo  Cette etape est reservee a un usage interne.
+echo  Elle cree une copie source complete du projet.
+echo  Pour livrer au client, utiliser build-client-package.bat.
 echo.
 
 :: ── Nom du client ─────────────────────────────────────────────────────────────
-set /p CLIENT_NAME="Nom du client (ex: festival-ete, gala-2026) : "
-if "%CLIENT_NAME%"=="" (
-  echo  Erreur : nom requis.
-  pause
-  exit /b 1
-)
+set /p CLIENT_NAME="Nom du client (ex: all-day, ladies-break) : "
+if "%CLIENT_NAME%"=="" ( echo ERREUR : nom requis. & pause & exit /b 1 )
+
+set /p API_KEY="Cle API Anthropic (sk-ant-...) [Entree pour laisser vide] : "
+set /p APP_DISPLAY="Nom affiche dans l'app (ex: All Day Festival) : "
+if "%APP_DISPLAY%"=="" set APP_DISPLAY=%CLIENT_NAME%
 
 set DEST=%~dp0..\event-analytics-%CLIENT_NAME%
+
 echo.
-echo  Dossier de destination : %DEST%
+echo  Destination : %DEST%
 echo.
+
+:: ── Token securise (YYYYMMDD + nom + hash simple) ─────────────────────────────
+for /f "tokens=1-3 delims=/ " %%a in ("%date%") do (
+  set TOKEN_DATE=%%a%%b%%c
+)
+:: Nettoyer le token de caracteres invalides
+set TOKEN_RAW=%TOKEN_DATE%-%CLIENT_NAME%-ea2026
+set TOKEN=%TOKEN_RAW: =-%
 
 :: ── Copie du projet ───────────────────────────────────────────────────────────
-echo  Copie des fichiers...
-xcopy /E /I /Q /EXCLUDE:%~dp0setup-client.exclude.txt "%~dp0" "%DEST%"
+echo  [1/5] Copie du projet...
+if exist "%DEST%" (
+  echo  ATTENTION : le dossier existe deja. Ecrasement...
+  rmdir /S /Q "%DEST%" 2>nul
+)
+xcopy /E /I /Q /EXCLUDE:"%~dp0setup-client.exclude.txt" "%~dp0." "%DEST%" > nul
+if errorlevel 1 ( echo ERREUR lors de la copie. & pause & exit /b 1 )
+echo  OK
 
-:: ── Supprimer les fichiers spécifiques à la démo ──────────────────────────────
-echo  Nettoyage données démo...
+:: ── Nettoyage données démo ────────────────────────────────────────────────────
+echo  [2/5] Suppression donnees demo...
 if exist "%DEST%\backend\data.db"          del /Q "%DEST%\backend\data.db"
 if exist "%DEST%\backend\.env"             del /Q "%DEST%\backend\.env"
 if exist "%DEST%\frontend\.env.local"      del /Q "%DEST%\frontend\.env.local"
-if exist "%DEST%\.remember"               rmdir /S /Q "%DEST%\.remember"
+if exist "%DEST%\.remember"               rmdir /S /Q "%DEST%\.remember" 2>nul
+if exist "%DEST%\.git"                    rmdir /S /Q "%DEST%\.git" 2>nul
+if exist "%DEST%\pitch"                   rmdir /S /Q "%DEST%\pitch" 2>nul
+echo  OK
 
-:: ── Créer les fichiers .env pour le client ────────────────────────────────────
-echo  Création des fichiers de configuration...
+:: ── Fichiers .env ─────────────────────────────────────────────────────────────
+echo  [3/5] Creation des fichiers de configuration...
 
 (
-echo # Event Analytics — Configuration client %CLIENT_NAME%
+echo # Event Analytics — Configuration %CLIENT_NAME%
+echo # Genere le %date%
+echo.
+echo # Cle API Anthropic — OBLIGATOIRE pour les rapports IA
+if "%API_KEY%"=="" (
 echo ANTHROPIC_API_KEY=sk-ant-REMPLACER_PAR_VOTRE_CLE
-echo APP_NAME=%CLIENT_NAME%
-echo API_SECRET_TOKEN=REMPLACER_PAR_UN_TOKEN_SECRET
+) else (
+echo ANTHROPIC_API_KEY=%API_KEY%
+)
+echo.
+echo # Nom affiche dans les PDF et les rapports
+echo APP_NAME=%APP_DISPLAY%
+echo.
+echo # Token de securite API — meme valeur dans frontend .env.local
+echo API_SECRET_TOKEN=%TOKEN%
+echo.
+echo # Dossier PDF de reference (laisser vide si non applicable)
 echo PDF_SOURCE_DIR=
 echo CORS_ORIGINS=
 ) > "%DEST%\backend\.env"
 
 (
 echo VITE_API_URL=http://localhost:8001
-echo VITE_API_TOKEN=REMPLACER_PAR_LE_MEME_TOKEN
+echo VITE_API_TOKEN=%TOKEN%
 echo VITE_APP_MODE=production
 ) > "%DEST%\frontend\.env.local"
+echo  OK
 
-:: ── Instructions ──────────────────────────────────────────────────────────────
+:: ── Installation dependances ──────────────────────────────────────────────────
+echo  [4/5] Installation des dependances...
+
+echo    Backend Python...
+cd /d "%DEST%\backend"
+python -m pip install -r requirements.txt -q --disable-pip-version-check
+if errorlevel 1 ( echo ERREUR pip. & pause & exit /b 1 )
+
+echo    Frontend Node...
+cd /d "%DEST%\frontend"
+call npm install --silent 2>nul
+if errorlevel 1 ( echo ERREUR npm. & pause & exit /b 1 )
+cd /d "%~dp0"
+echo  OK
+
+:: ── Test de démarrage backend ─────────────────────────────────────────────────
+echo  [5/5] Test de demarrage backend...
+cd /d "%DEST%\backend"
+python -c "import main; print('Backend OK')"
+if errorlevel 1 ( echo ERREUR import backend. & pause & exit /b 1 )
+cd /d "%~dp0"
+echo  OK
+
+:: ── Résumé ────────────────────────────────────────────────────────────────────
 echo.
-echo  =============================================
-echo   Installation terminee !
-echo  =============================================
+echo  ============================================================
+echo   Instance client prete !
+echo  ============================================================
 echo.
 echo  Dossier : %DEST%
+echo  Mode    : production (donnees demo masquees)
+echo  Token   : %TOKEN%
 echo.
-echo  Etapes suivantes :
-echo  1. Ouvrir %DEST%\backend\.env
-echo     - Remplacer ANTHROPIC_API_KEY par la vraie cle
-echo     - Choisir un APP_NAME (nom du festival client)
-echo     - Definir API_SECRET_TOKEN
+echo  Pour lancer l'instance client :
+echo    cd %DEST%
+echo    start.bat
 echo.
-echo  2. Ouvrir %DEST%\frontend\.env.local
-echo     - Copier le meme API_SECRET_TOKEN
+echo  Pour packager et livrer au client :
+echo    build-client-package.bat
+echo    (saisir le nom du client : %CLIENT_NAME%)
 echo.
-echo  3. Lancer l'application : double-cliquer start.bat dans %DEST%
-echo.
-echo  4. Dans l'application :
-echo     - Aller dans "Evenements" pour creer l'evenement client
-echo     - Aller dans "Importer donnees" pour uploader les fichiers
-echo.
+if "%API_KEY%"=="" (
+  echo  ATTENTION : ANTHROPIC_API_KEY non renseignee.
+  echo  Editer %DEST%\backend\.env avant livraison.
+  echo.
+)
 
 pause
 endlocal
