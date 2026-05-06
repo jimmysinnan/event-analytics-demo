@@ -129,7 +129,7 @@ export default function VueGlobale() {
         <KpiCard label="CA Consommation" value={conso ? fmt.currency(conso.ca) : '—'}
           sub={conso ? 'Hors frais & consignes' : `Indisponible ${year}`}
           delta={delta_ca} accent="blue" icon={Euro} />
-        <KpiCard label="Festivaliers" value={AFFLUENCE[year] ? fmt.number(AFFLUENCE[year].total) : billet?.scans ? fmt.number(billet.scans) : '—'}
+        <KpiCard label="Festivaliers" value={IS_DEMO && AFFLUENCE[year] ? fmt.number(AFFLUENCE[year].total) : billet?.scans ? fmt.number(billet.scans) : '—'}
           sub="Entrées scannées" delta={delta_freq} accent="teal" icon={Users} />
         <KpiCard label="CA Billetterie" value={billet?.ca_billet ? fmt.currency(billet.ca_billet) : '—'}
           sub={billet?.ca_billet ? 'Toutes formules' : 'Non consolidé'}
@@ -139,6 +139,7 @@ export default function VueGlobale() {
           delta={delta_cli} accent="violet" icon={ShoppingBag} />
       </div>
 
+      {IS_DEMO ? <>
       {/* Graphiques principaux */}
       <div className="grid xl:grid-cols-3 gap-4">
 
@@ -291,6 +292,12 @@ export default function VueGlobale() {
           </div>
         </SectionCard>
       </div>
+      </> : (
+        <EmptyState
+          message="Vue globale — en attente de données"
+          hint="Importez vos fichiers de billetterie, consommation ou invitations pour alimenter les indicateurs."
+        />
+      )}
 
     </div>
   )

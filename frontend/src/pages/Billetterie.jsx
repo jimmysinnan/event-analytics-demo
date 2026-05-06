@@ -187,13 +187,13 @@ export default function Billetterie() {
               value={b?.ca_billet ? fmt.currency(b.ca_billet) : '—'}
               sub="Toutes formules" delta={null} accent="gold" icon={Euro} />
             <KpiCard label="Billets totaux"
-              value={year === 2025 ? fmt.number(totalTickets2025)
+              value={IS_DEMO && year === 2025 ? fmt.number(totalTickets2025)
                 : b?.familles_tarifaires?.[0]?.nb ? fmt.number(b.familles_tarifaires[0].nb) : '—'}
-              sub={year === 2025 ? '31% invitations' : 'Principal format'}
+              sub={IS_DEMO && year === 2025 ? '31% invitations' : 'Principal format'}
               delta={null} accent="teal" icon={Ticket} />
             <KpiCard label="CSE / partenaires"
-              value={year === 2025 ? fmt.number(2704) : '—'}
-              sub={year === 2025 ? fmt.currency(236928) : `Voir données ${year}`}
+              value={IS_DEMO && year === 2025 ? fmt.number(2704) : '—'}
+              sub={IS_DEMO && year === 2025 ? fmt.currency(236928) : `Voir données ${year}`}
               delta={null} accent="violet" icon={Gift} />
           </div>
 
@@ -227,7 +227,7 @@ export default function Billetterie() {
           )}
 
           {/* Données spécifiques 2025 */}
-          {year === 2025 && (
+          {IS_DEMO && year === 2025 && (
             <>
               <div className="grid xl:grid-cols-2 gap-4">
                 <SectionCard title="Ventes canal principal par mois" subtitle="Nov 2024 → Jul 2025">
@@ -297,7 +297,7 @@ export default function Billetterie() {
           )}
 
           {/* Affluence */}
-          {(AFFLUENCE[year] || AFFLUENCE[year - 1]) && (
+          {IS_DEMO && (AFFLUENCE[year] || AFFLUENCE[year - 1]) && (
             <SectionCard title={`Affluence ${year}`} subtitle={`Comparaison avec ${year - 1}`}>
               <div className="grid grid-cols-3 gap-4">
                 {[

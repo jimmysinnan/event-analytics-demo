@@ -656,9 +656,8 @@ export default function BilletterieTracking({ channelFilter = null }) {
         {status === 'error' && (
           <div className="mt-3 p-3 rounded-xl" style={{ background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.15)' }}>
             <p className="text-xs text-[#8B9BB4]">
-              <span className="text-[#F59E0B] font-semibold">Backend inactif ou format non reconnu.</span>{' '}
-              Lancer <code className="px-1 py-0.5 rounded text-2xs" style={{ background: '#111D33', color: '#06B6D4' }}>start.bat</code>{' '}
-              ou vérifier le format du fichier. Si le problème persiste, forcer la source manuellement ci-dessus.
+              <span className="text-[#F59E0B] font-semibold">Erreur de connexion ou format non reconnu.</span>{' '}
+              Vérifiez le format du fichier ou contactez le support. Si le problème persiste, forcer la source manuellement ci-dessus.
             </p>
           </div>
         )}

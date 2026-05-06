@@ -117,6 +117,9 @@ mkdir -p "${CLIENT_DIR}/exports"
 mkdir -p "${CLIENT_DIR}/logs"
 mkdir -p "${CLIENT_DIR}/backups"
 chmod 750 "${CLIENT_DIR}"
+# Fichier htpasswd vide pour que Nginx démarre sans erreur avant setup-basic-auth.sh
+touch "${CLIENT_DIR}/.htpasswd"
+chmod 640 "${CLIENT_DIR}/.htpasswd"
 log_ok "Dossiers créés : ${CLIENT_DIR}/"
 
 # ── Génération du .env ────────────────────────────────────────────────────────
@@ -196,11 +199,11 @@ cat > "${NGINX_CONF}" << EOF
 # Copier dans /etc/nginx/sites-available/ea-${CLIENT_SLUG}.conf
 # Puis : sudo ln -s /etc/nginx/sites-available/ea-${CLIENT_SLUG}.conf /etc/nginx/sites-enabled/
 # Et   : sudo certbot --nginx -d ${CLIENT_DOMAIN}
+# Et   : ./setup-basic-auth.sh ${CLIENT_SLUG}
 
 server {
     listen 80;
     server_name ${CLIENT_DOMAIN};
-    # Redirige vers HTTPS (Certbot ajoutera les blocs SSL)
     return 301 https://\$host\$request_uri;
 }
 
@@ -212,39 +215,63 @@ server {
     # ssl_certificate     /etc/letsencrypt/live/${CLIENT_DOMAIN}/fullchain.pem;
     # ssl_certificate_key /etc/letsencrypt/live/${CLIENT_DOMAIN}/privkey.pem;
 
-    # Frontend compilé partagé entre tous les clients
-    location / {
-        root ${EA_APP}/frontend_build;
-        try_files \$uri \$uri/ /index.html;
+    # Basic Auth — Nginx gère l'accès, le navigateur met en cache les credentials
+    # (pas de reconnexion à répétition pendant la session)
+    auth_basic "Event Analytics";
+    auth_basic_user_file ${CLIENT_DIR}/.htpasswd;
 
-        # index.html : pas de cache (vérifie toujours la version à jour)
-        location = /index.html {
-            add_header Cache-Control "no-cache, no-store, must-revalidate";
-        }
-        # Assets versionnés (hash dans le nom) : cache long
-        location ~* \.(js|css|woff2?|png|ico|svg)$ {
-            add_header Cache-Control "public, max-age=31536000, immutable";
-        }
+    # Uploads larges et requêtes longues (imports, rapports IA)
+    client_max_body_size 200M;
+    client_body_timeout 3600s;
+    client_header_timeout 3600s;
+    keepalive_timeout 3600s;
+    send_timeout 3600s;
+
+    root ${EA_APP}/frontend_build;
+
+    location = /index.html {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        try_files \$uri =404;
+    }
+
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files \$uri =404;
     }
 
     # API — routée vers le backend de CE client
+    # Nginx injecte le token serveur → pas de 401 applicatif sur les appels /api/
     location /api/ {
         proxy_pass http://127.0.0.1:${CLIENT_PORT};
         proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
+
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_cache_bypass \$http_upgrade;
-        # Streaming SSE pour les rapports IA
-        proxy_read_timeout 300s;
+        proxy_set_header X-API-Token "${TOKEN}";
+        proxy_set_header Authorization "Bearer ${TOKEN}";
+
+        # Connexions longues : imports, rapports IA, SSE
         proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_connect_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_read_timeout 3600s;
+        send_timeout 3600s;
+        proxy_cache off;
+        chunked_transfer_encoding off;
     }
 
     location /health {
-        proxy_pass http://127.0.0.1:${CLIENT_PORT};
+        auth_basic off;
+        proxy_pass http://127.0.0.1:${CLIENT_PORT}/health;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+    }
+
+    location / {
+        try_files \$uri \$uri/ /index.html;
     }
 }
 EOF

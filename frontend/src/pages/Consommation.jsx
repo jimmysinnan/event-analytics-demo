@@ -89,7 +89,7 @@ export default function Consommation() {
       <div className="grid xl:grid-cols-3 gap-4">
         <SectionCard title="CA horaire bars"
           subtitle={year === 2025 ? `Pic à ${pic.h} · ${fmt.currency(pic.ca)}` : `Disponible uniquement pour 2025`}>
-          {year === 2025 ? (
+          {IS_DEMO && year === 2025 ? (
             <ResponsiveContainer width="100%" height={200}>
               <AreaChart data={CA_HORAIRE_2025}>
                 <defs>
@@ -137,6 +137,7 @@ export default function Consommation() {
       <div className="grid xl:grid-cols-2 gap-4">
 
         <SectionCard title="CA par famille produit" subtitle="Comparatif 2023 · 2024 · 2025">
+          {IS_DEMO ? (<>
           <div className="space-y-3">
             {(() => {
               const allNames = [...new Set([2023,2024,2025].flatMap(y => (CONSO[y]?.familles ?? []).map(f => f.name)))]
@@ -177,11 +178,12 @@ export default function Consommation() {
               <span key={y} className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{background:c}} />{y}</span>
             ))}
           </div>
+          </>) : <NoData detail="Importez un fichier de consommation pour afficher les familles produit." />}
         </SectionCard>
 
         <div className="space-y-4">
           <SectionCard title={`Top articles — volume ${year}`}>
-            {year === 2025 ? (
+            {IS_DEMO && year === 2025 ? (
               <div className="space-y-2">
                 {TOP_ARTICLES_2025.map(({ art, qty }, i) => (
                   <div key={art} className="flex items-center gap-3">
@@ -202,24 +204,26 @@ export default function Consommation() {
             ) : <NoData year={year} detail="Détail articles disponible uniquement pour 2025" />}
           </SectionCard>
 
-          <SectionCard title="Évolution globale 2023 → 2025">
-            <div className="grid grid-cols-3 gap-3">
-              {OVERVIEW.filter(d => d.ca_conso).map(d => (
-                <div key={d.year} className="text-center p-3 rounded-xl"
-                  style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${d.year===year ? 'rgba(245,158,11,0.2)' : '#1A2840'}` }}>
-                  <p className="text-2xs uppercase tracking-wider mb-1.5"
-                    style={{ color: d.year===year ? '#F59E0B' : d.year===2024 ? '#068EEA' : '#4A5568' }}>
-                    {d.year}{d.year===year && ' ✦'}
-                  </p>
-                  <p className="num text-sm font-bold text-white">{fmt.currency(d.ca_conso)}</p>
-                  <div className="mt-2 space-y-0.5">
-                    <p className="num text-2xs text-[#8B9BB4]">{fmt.number(d.clients)} clients</p>
-                    <p className="num text-2xs text-[#8B9BB4]">{fmt.currency(d.panier)} panier</p>
+          {IS_DEMO && (
+            <SectionCard title="Évolution globale 2023 → 2025">
+              <div className="grid grid-cols-3 gap-3">
+                {OVERVIEW.filter(d => d.ca_conso).map(d => (
+                  <div key={d.year} className="text-center p-3 rounded-xl"
+                    style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${d.year===year ? 'rgba(245,158,11,0.2)' : '#1A2840'}` }}>
+                    <p className="text-2xs uppercase tracking-wider mb-1.5"
+                      style={{ color: d.year===year ? '#F59E0B' : d.year===2024 ? '#068EEA' : '#4A5568' }}>
+                      {d.year}{d.year===year && ' ✦'}
+                    </p>
+                    <p className="num text-sm font-bold text-white">{fmt.currency(d.ca_conso)}</p>
+                    <div className="mt-2 space-y-0.5">
+                      <p className="num text-2xs text-[#8B9BB4]">{fmt.number(d.clients)} clients</p>
+                      <p className="num text-2xs text-[#8B9BB4]">{fmt.currency(d.panier)} panier</p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </SectionCard>
+                ))}
+              </div>
+            </SectionCard>
+          )}
         </div>
       </div>
 
