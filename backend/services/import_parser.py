@@ -109,9 +109,13 @@ def detect_source(df: pd.DataFrame) -> str:
     """
     cols = ' '.join(str(c).lower() for c in df.columns)
 
-    # Weezevent
+    # Weezevent — colonnes uniques (groupe de tarif / n. billet) OU numéro de commande + tarif
+    # Note : export Weezevent utilise "Prénom acheteur" (PAS "Prénom participant")
+    if any(k in cols for k in ['groupe de tarif', 'n. billet', 'n° billet', 'n°billet']):
+        return 'weezevent'
     if any(k in cols for k in ['numéro de commande', 'numero de commande', 'code participant']):
-        if 'tarif' in cols and ('prénom participant' in cols or 'prenom participant' in cols):
+        if 'tarif' in cols and ('prénom acheteur' in cols or 'prenom acheteur' in cols or
+                                 'prénom participant' in cols or 'prenom participant' in cols):
             return 'weezevent'
 
     # Bizouk — colonnes réelles export XLS
@@ -274,24 +278,28 @@ def parse_bizouk(df: pd.DataFrame, filename: str) -> dict:
     c_statut     = find('statut de la commande', 'statut', 'status')
 
     # ── Deux filtres statut séparés ───────────────────────────────────────────
-    # Participants : liste noire (tout sauf annulé/remboursé) → correspond au
-    #               dashboard Bizouk qui inclut "En attente", "En cours", etc.
-    # CA          : liste blanche (seulement validé/payé) → correspond à la
-    #               "Recette" Bizouk qui ne compte que les ventes encaissées
-
     if c_statut is not None:
         st = df[c_statut].astype(str).str.lower()
-        # Liste noire pour participants
-        invalides   = st.str.contains(r'annul|cancel|remboursé|remboursee|refund', regex=True, na=False)
+
+        # PARTICIPANTS — liste noire stricte :
+        #   exclure UNIQUEMENT les commandes effectivement annulées ou remboursées.
+        #   "En attente de remboursement" ≠ "Remboursée" → garder.
+        #   → regex : on cherche le mot "annulée" / "annulé" ou "remboursée" (participe passé féminin)
+        invalides   = st.str.contains(
+            r'annul[eé]e?|cancel|remboursée|refunded', regex=True, na=False
+        )
         df_comptage = df[~invalides].copy()
-        # Liste blanche pour CA (seulement les ordres réellement payés)
-        valides_ca  = st.str.contains(r'valid|paid|confirm|success|complet|versé', regex=True, na=False)
-        df_ca       = df[valides_ca].copy()
+
+        # CA — liste blanche (ordres réellement encaissés par Bizouk)
+        valides_ca  = st.str.contains(
+            r'valid[eé]e?|paid|confirm|success|complet|versé', regex=True, na=False
+        )
+        df_ca = df[valides_ca].copy()
     else:
         df_comptage = df.copy()
         df_ca       = df.copy()
 
-    # Commandes et participants (filtre inclusif)
+    # Commandes + participants (filtre inclusif)
     nb_cmd = int(df_comptage[c_cmd].nunique()) if c_cmd else int(len(df_comptage))
     if c_qty is not None:
         qty_num = pd.to_numeric(df_comptage[c_qty], errors='coerce').fillna(1)
@@ -299,19 +307,31 @@ def parse_bizouk(df: pd.DataFrame, filename: str) -> dict:
     else:
         nb_part = int(len(df_comptage))
 
-    # CA brut = somme des montants de LIGNE pour les ordres payés
-    ca_brut = _safe_sum(df_ca[c_price]) if c_price else None
+    # ── CA = SUM("Montant total de la ligne de commande") ─────────────────────
+    # Méthode Bizouk : additionner les montants par LIGNE (1 ligne = 1 type de billet).
+    # "Montant total de la ligne de commande" = Prix unitaire × Quantité pour cette ligne.
+    # Pas de déduplication nécessaire : chaque ligne a son propre montant.
+    # C'est ce que Bizouk appelle "Recette de billetterie" dans son dashboard.
+    #
+    # NE PAS utiliser "Montant total de la commande" (total de tout l'ordre, dupliqué par ligne).
+    c_price_ligne = find('montant total de la ligne de commande', 'montant total de la ligne')
+    ca_brut = None
+    if c_price_ligne:
+        ca_brut = _safe_sum(df_ca[c_price_ligne])
+    elif c_price:
+        # Fallback : utiliser le premier champ montant trouvé
+        ca_brut = _safe_sum(df_ca[c_price])
 
-    # Commission Bizouk — ATTENTION : c'est un montant par COMMANDE dupliqué
-    # sur chaque ligne de la commande. On déduplique par commande avant de sommer.
+    # Commission — stockée séparément pour référence (dédupliquée par commande)
     ca_commission = None
     if c_commission and c_cmd:
-        df_ca_dedup  = df_ca.drop_duplicates(subset=[c_cmd])
+        df_ca_dedup = df_ca.drop_duplicates(subset=[c_cmd])
         ca_commission = _safe_sum(df_ca_dedup[c_commission])
     elif c_commission:
         ca_commission = _safe_sum(df_ca[c_commission])
 
-    # CA net = Brut - Commission (= recette reversée à l'organisateur)
+    # CA net = SUM(Montant total de la ligne) - Commission (dédupliquée par commande)
+    # = "Recette de billetterie" Bizouk
     if ca_brut is not None and ca_commission is not None:
         ca = round(ca_brut - ca_commission, 2)
     else:
