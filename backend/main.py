@@ -508,6 +508,112 @@ def list_sources():
     return [{"id": k, "label": v} for k, v in SOURCE_LABELS.items()]
 
 
+# ── Résumé édition — données importées ────────────────────────────────────────
+
+@app.get("/api/editions/{edition_id}/summary")
+def edition_summary(edition_id: str):
+    """
+    Retourne un résumé des données importées pour une édition.
+    Alimenté par les imports billetterie + consommation.
+    Pas de données demo — uniquement les données réelles importées.
+    """
+    billet = get_state(edition_id)
+    conso  = get_conso_state(edition_id)
+    imports_list = get_imports(edition_id)
+
+    has_billet = billet.get('nb_commandes', 0) > 0
+    has_conso  = conso is not None
+
+    billet_out = None
+    if has_billet:
+        billet_out = {
+            'nb_commandes':    billet.get('nb_commandes', 0),
+            'nb_participants': billet.get('nb_participants', 0),
+            'ca_total':        billet.get('ca_total', 0),
+            'top_tarifs':      billet.get('top_tarifs', []),
+            'ventes_par_mois': billet.get('ventes_par_mois', []),
+            'canaux':          billet.get('canaux', {}),
+            'updated_at':      billet.get('updated_at'),
+        }
+
+    conso_out = None
+    if has_conso:
+        kpi = conso.get('kpi', {})
+        # top_familles et top_pdv peuvent être des dict → convertir en list triée
+        top_fam_raw = kpi.get('top_familles') or {}
+        top_pdv_raw = kpi.get('top_pdv') or {}
+        top_art_raw = kpi.get('top_articles') or {}
+        conso_out = {
+            'ca_ht':        kpi.get('ca_ht'),
+            'n_clients':    kpi.get('n_clients'),
+            'n_transac':    kpi.get('n_transac'),
+            'panier_moyen': kpi.get('panier_moyen'),
+            'top_familles': [{'name': k, 'ca': v}  for k, v in sorted(top_fam_raw.items(), key=lambda x: -x[1])],
+            'top_pdv':      [{'pdv': k,  'ca': v}  for k, v in sorted(top_pdv_raw.items(), key=lambda x: -x[1])],
+            'top_articles': [{'art': k,  'qty': v} for k, v in sorted(top_art_raw.items(), key=lambda x: -x[1])],
+            'ca_horaire':   conso.get('ca_horaire', []),
+            'filename':     conso.get('filename', ''),
+            'updated_at':   conso.get('updated_at'),
+        }
+
+    return JSONResponse(content=jsonify({
+        'edition_id':    edition_id,
+        'has_data':      has_billet or has_conso,
+        'has_billet':    has_billet,
+        'has_conso':     has_conso,
+        'imports_count': len(imports_list),
+        'billetterie':   billet_out,
+        'conso':         conso_out,
+    }))
+
+
+@app.post("/api/editions/{edition_id}/consolidate")
+async def consolidate_edition(edition_id: str, request: Request):
+    """
+    Clôture d'édition — consolide les imports dans edition_analytics.
+    Appelé depuis le frontend quand l'utilisateur clôture une édition.
+    Body : { year: int, edition_name: str (optionnel) }
+    """
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+
+    year = body.get('year')
+    if not year:
+        raise HTTPException(400, detail="Le champ 'year' est obligatoire.")
+
+    billet = get_state(edition_id)
+    conso  = get_conso_state(edition_id)
+
+    data: dict = {'year': int(year)}
+    if body.get('edition_name'):
+        data['edition_name'] = body['edition_name']
+
+    if billet.get('nb_commandes', 0) > 0:
+        data['ca_billet']    = billet.get('ca_total')
+        data['festivaliers'] = billet.get('nb_participants')
+
+    if conso:
+        kpi = conso.get('kpi', {})
+        data['ca_conso']     = kpi.get('ca_ht')
+        data['clients']      = kpi.get('n_clients')
+        data['transactions'] = kpi.get('n_transac')
+        data['panier_conso'] = kpi.get('panier_moyen')
+        top_fam = kpi.get('top_familles') or {}
+        if top_fam:
+            data['familles'] = [{'name': k, 'ca': v} for k, v in top_fam.items()]
+
+    ca_b = billet.get('ca_total') or 0
+    ca_c = (conso.get('kpi', {}).get('ca_ht') or 0) if conso else 0
+    if ca_b or ca_c:
+        data['ca_total'] = round(ca_b + ca_c, 2)
+
+    eid = upsert_edition_analytics(int(year), data)
+    return JSONResponse(content=jsonify({'ok': True, 'id': eid, 'consolidated': data}))
+
+
 # ── Channels (canaux de distribution) ─────────────────────────────────────────
 
 @app.get("/api/channels/{edition_id}")

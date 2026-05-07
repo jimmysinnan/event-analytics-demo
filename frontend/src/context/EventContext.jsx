@@ -117,6 +117,14 @@ export function EventProvider({ children }) {
     return updated
   }
 
+  function closeEdition(id) {
+    return updateEdition(id, { status: 'closed', closedAt: new Date().toISOString() })
+  }
+
+  function reopenEdition(id) {
+    return updateEdition(id, { status: 'active', closedAt: null })
+  }
+
   function addChannel(data) {
     const ch = saveChannelStore(createChannel({ ...data, editionId: activeEditionId }))
     setChannels(getChannels(activeEditionId))
@@ -151,7 +159,7 @@ export function EventProvider({ children }) {
       orgs, events, editions, eventEditions,
       activeOrg, activeEvent, activeEdition, activeYear,
       setActiveOrgId, setActiveEventId, setActiveEditionId,
-      addEvent, addEdition, updateEdition, refresh,
+      addEvent, addEdition, updateEdition, closeEdition, reopenEdition, refresh,
       channels, setChannels, addChannel, removeChannel,
       editionSettings, updateEditionSettings,
       theme, updateTheme,

@@ -18,6 +18,8 @@ from datetime import datetime
 from pathlib import Path
 from contextlib import contextmanager
 
+_APP_MODE = os.environ.get('APP_MODE', 'demo').strip().lower()
+
 # Chemin du fichier SQLite.
 # Priorité : variable d'environnement SQLITE_DB_PATH (hébergement dédié)
 # Défaut   : data.db dans le dossier du backend (mode local/dev)
@@ -188,9 +190,10 @@ def _safe_alter(sql: str):
 def _seed_edition_analytics():
     """
     Seed idempotent des données historiques 2023-2025.
-    - INSERT OR IGNORE pour les nouvelles lignes
-    - UPDATE ... WHERE {champ} IS NULL pour réparer sans écraser
+    Uniquement en mode demo — les instances production partent d'une base vide.
     """
+    if _APP_MODE == 'production':
+        return
     now = datetime.utcnow().isoformat()
     seed = [
         {

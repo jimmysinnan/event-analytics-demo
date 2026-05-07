@@ -1,14 +1,17 @@
+import { useState, useEffect } from 'react'
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Cell
 } from 'recharts'
-import { ShoppingCart, Euro, Users, Star, Info } from 'lucide-react'
+import { ShoppingCart, Euro, Users, Star, Info, RefreshCw } from 'lucide-react'
 import KpiCard from '../components/ui/KpiCard'
 import SectionCard from '../components/ui/SectionCard'
+import EmptyState from '../components/ui/EmptyState'
 import { fmt } from '../lib/format'
 import { useEdition } from '../context/EditionContext'
 import { CONSO, OVERVIEW } from '../lib/editionsData'
 import { IS_DEMO } from '../lib/appMode'
+import { API } from '../lib/api'
 
 // CA horaire 2025 uniquement — pas disponible sur les autres années dans le même format
 const CA_HORAIRE_2025 = [
@@ -53,9 +56,25 @@ function NoData({ year, detail }) {
 }
 
 export default function Consommation() {
-  const { year } = useEdition()
+  const { year, activeEdition } = useEdition()
   const d    = IS_DEMO ? CONSO[year]     : null
   const prev = IS_DEMO ? CONSO[year - 1] : null
+
+  // Production : données réelles depuis l'API
+  const [liveConso, setLiveConso]   = useState(null)
+  const [liveLoading, setLiveLoading] = useState(false)
+
+  useEffect(() => {
+    if (IS_DEMO || !activeEdition?.id) { setLiveConso(null); return }
+    setLiveLoading(true)
+    fetch(`${API}/api/editions/${activeEdition.id}/summary`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => setLiveConso(data?.conso ?? null))
+      .catch(() => setLiveConso(null))
+      .finally(() => setLiveLoading(false))
+  }, [activeEdition?.id])
+
+  const liveKpi = liveConso
 
   const delta_ca    = d && prev ? fmt.delta(d.ca,      prev.ca)      : null
   const delta_cli   = d && prev ? fmt.delta(d.clients, prev.clients) : null
@@ -68,22 +87,88 @@ export default function Consommation() {
     <div className="space-y-6 animate-slide-up">
 
       {/* Bandeau source */}
-      <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl"
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl"
         style={{ background: 'rgba(6,142,234,0.07)', border: '1px solid rgba(6,142,234,0.15)' }}>
-        <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#068EEA' }} />
-        <p className="text-xs text-[#8B9BB4]">
-          Édition <span className="text-white font-semibold">{year}</span>
-          {d ? ` — Source : ${d.plateforme}` : ' — Données de consommation non disponibles pour cette édition'}
-        </p>
+        <div className="flex items-center gap-3">
+          <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#068EEA' }} />
+          <p className="text-xs text-[#8B9BB4]">
+            Édition <span className="text-white font-semibold">{activeEdition?.name ?? year}</span>
+            {IS_DEMO && d ? ` — Source : ${d.plateforme}` : ''}
+            {!IS_DEMO && liveKpi ? ` — ${liveKpi.filename || 'Fichier importé'}` : ''}
+            {!IS_DEMO && !liveKpi && !liveLoading ? ' — Aucun fichier consommation importé' : ''}
+          </p>
+        </div>
+        {liveLoading && <RefreshCw size={12} className="animate-spin text-[#4A5568]" />}
       </div>
 
       {/* KPI */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <KpiCard label="CA Consommation"   value={d ? fmt.currency(d.ca)           : '—'} sub={d ? 'Hors frais & consignes' : `Indisponible ${year}`} delta={delta_ca}      accent="blue"   icon={Euro}         />
-        <KpiCard label="Clients acheteurs" value={d ? fmt.number(d.clients)        : '—'} sub="Clients uniques"                                       delta={delta_cli}     accent="teal"   icon={Users}        />
-        <KpiCard label="Transactions"      value={d ? fmt.number(d.transactions)   : '—'} sub="Uniques"                                               delta={delta_transac} accent="gold"   icon={ShoppingCart} />
-        <KpiCard label="Panier moyen"      value={d ? fmt.currency(d.panier)       : '—'} sub="CA HT / client"                                        delta={delta_panier}  accent="violet" icon={Star}         />
+        <KpiCard label="CA Consommation"
+          value={IS_DEMO ? (d ? fmt.currency(d.ca) : '—') : (liveKpi?.ca_ht ? fmt.currency(liveKpi.ca_ht) : '—')}
+          sub={IS_DEMO ? (d ? 'Hors frais & consignes' : `Indisponible ${year}`) : (liveKpi ? 'Hors frais & consignes' : 'Importez la consommation')}
+          delta={delta_ca} accent="blue" icon={Euro} />
+        <KpiCard label="Clients acheteurs"
+          value={IS_DEMO ? (d ? fmt.number(d.clients) : '—') : (liveKpi?.n_clients ? fmt.number(liveKpi.n_clients) : '—')}
+          sub="Clients uniques" delta={delta_cli} accent="teal" icon={Users} />
+        <KpiCard label="Transactions"
+          value={IS_DEMO ? (d ? fmt.number(d.transactions) : '—') : (liveKpi?.n_transac ? fmt.number(liveKpi.n_transac) : '—')}
+          sub="Uniques" delta={delta_transac} accent="gold" icon={ShoppingCart} />
+        <KpiCard label="Panier moyen"
+          value={IS_DEMO ? (d ? fmt.currency(d.panier) : '—') : (liveKpi?.panier_moyen ? fmt.currency(liveKpi.panier_moyen) : '—')}
+          sub="CA HT / client" delta={delta_panier} accent="violet" icon={Star} />
       </div>
+
+      {/* Production : graphiques depuis import conso ──────────────────────── */}
+      {!IS_DEMO && !liveKpi && !liveLoading && (
+        <EmptyState
+          message="Aucune donnée de consommation importée"
+          hint="Importez un fichier Weezpay (BDD / JDD Vente) depuis la page Importer données pour alimenter cet onglet."
+        />
+      )}
+      {!IS_DEMO && liveKpi?.top_familles?.length > 0 && (
+        <div className="grid xl:grid-cols-2 gap-4">
+          <SectionCard title="CA par famille produit" subtitle="Depuis import consommation">
+            <div className="space-y-2">
+              {liveKpi.top_familles.slice(0, 8).map((f, i) => {
+                const max = liveKpi.top_familles[0]?.ca || 1
+                return (
+                  <div key={f.name}>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <p className="text-xs text-[#8B9BB4] truncate pr-2">{f.name}</p>
+                      <p className="num text-xs font-semibold text-white">{fmt.currency(f.ca)}</p>
+                    </div>
+                    <div className="h-1.5 rounded-full" style={{ background: '#1A2840' }}>
+                      <div className="h-full rounded-full" style={{ width: `${(f.ca / max) * 100}%`, background: i === 0 ? '#F59E0B' : i < 3 ? '#068EEA' : '#2A3850' }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </SectionCard>
+          {liveKpi.ca_horaire?.length > 1 && (
+            <SectionCard title="CA horaire" subtitle="Consommation par heure">
+              <ResponsiveContainer width="100%" height={200}>
+                <AreaChart data={liveKpi.ca_horaire}>
+                  <defs>
+                    <linearGradient id="gradLH" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="#068EEA" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#068EEA" stopOpacity={0}   />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="#1A2840" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="heure" tick={{ fill: '#8B9BB4', fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: '#8B9BB4', fontSize: 10 }} axisLine={false} tickLine={false}
+                    tickFormatter={v => `${(v/1000).toFixed(0)}k`} width={32} />
+                  <Tooltip contentStyle={{ background: '#111D33', border: '1px solid #1A2840', borderRadius: '0.75rem' }}
+                    formatter={v => [fmt.currency(v), 'CA HT']} />
+                  <Area type="monotone" dataKey="ca_ht" stroke="#068EEA" strokeWidth={2}
+                    fill="url(#gradLH)" dot={false} activeDot={{ r: 4, fill: '#068EEA' }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </SectionCard>
+          )}
+        </div>
+      )}
 
       {/* CA horaire + PDV */}
       <div className="grid xl:grid-cols-3 gap-4">

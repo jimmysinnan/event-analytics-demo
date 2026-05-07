@@ -42,10 +42,13 @@ export const RECOMMENDED_MODULES = {
 
 // ── Statuts ────────────────────────────────────────────────────────────────────
 export const EDITION_STATUS = {
-  upcoming:  { id: 'upcoming',  label: 'À venir',   color: '#F59E0B' },
-  active:    { id: 'active',    label: 'En cours',  color: '#10B981' },
-  completed: { id: 'completed', label: 'Terminée',  color: '#8B9BB4' },
-  archived:  { id: 'archived',  label: 'Archivée',  color: '#4A5568' },
+  draft:    { id: 'draft',    label: 'Brouillon',  color: '#8B9BB4' },
+  active:   { id: 'active',   label: 'En cours',   color: '#10B981' },
+  closed:   { id: 'closed',   label: 'Clôturée',   color: '#6366F1' },
+  archived: { id: 'archived', label: 'Archivée',   color: '#4A5568' },
+  // Rétrocompat — anciens statuts convertis en lecture
+  upcoming:  { id: 'draft',    label: 'Brouillon',  color: '#8B9BB4' },
+  completed: { id: 'closed',   label: 'Clôturée',   color: '#6366F1' },
 }
 
 // ── Factories ─────────────────────────────────────────────────────────────────
@@ -73,6 +76,11 @@ export function createEvent(data = {}) {
 }
 
 export function createEdition(data = {}) {
+  // Normalise les anciens statuts vers le nouveau modèle
+  const rawStatus = data.status ?? 'draft'
+  const status = rawStatus === 'upcoming' ? 'draft'
+               : rawStatus === 'completed' ? 'closed'
+               : rawStatus
   return {
     id:          data.id          ?? _id(),
     eventId:     data.eventId     ?? null,
@@ -82,10 +90,11 @@ export function createEdition(data = {}) {
     dateEnd:     data.dateEnd     ?? null,
     jaugeEst:    data.jaugeEst    ?? null,
     caEst:       data.caEst       ?? null,
-    status:      data.status      ?? 'upcoming',
+    status,
     modules:     data.modules     ?? [],
     imports:     data.imports     ?? [],
     createdAt:   data.createdAt   ?? new Date().toISOString(),
+    closedAt:    data.closedAt    ?? null,
   }
 }
 

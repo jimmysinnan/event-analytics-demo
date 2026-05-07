@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Plus, Calendar, ChevronRight, Archive,
-  CheckCircle2, Clock, Zap, BarChart2, Settings2
+  Plus, Calendar, ChevronRight,
+  BarChart2, Lock, Unlock
 } from 'lucide-react'
 import { useEventContext } from '../context/EventContext'
 import { createEvent, createEdition, EVENT_TYPES, RECOMMENDED_MODULES, EDITION_STATUS } from '../lib/models'
-import ChannelManager from '../components/ChannelManager'
+import { API } from '../lib/api'
 
 const C = {
   bg:      '#05080F',
@@ -20,7 +20,7 @@ const C = {
 }
 
 function StatusBadge({ status }) {
-  const s = EDITION_STATUS[status] ?? EDITION_STATUS.upcoming
+  const s = EDITION_STATUS[status] ?? EDITION_STATUS.draft
   return (
     <span
       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
@@ -230,20 +230,13 @@ function NewEventModal({ onSave, onClose }) {
 export default function Evenements() {
   const navigate = useNavigate()
   const {
-    events, editions, activeEvent, activeEdition,
+    events, editions, activeEvent,
     setActiveEventId, setActiveEditionId,
-    addEvent, addEdition, refresh,
+    addEvent, addEdition, closeEdition, reopenEdition, refresh,
   } = useEventContext()
 
-  const [showNewEvent,   setShowNewEvent]   = useState(false)
-  const [newEditionFor,  setNewEditionFor]  = useState(null)
-  // Sélecteurs indépendants pour le panneau de configuration
-  const [cfgEventId,   setCfgEventId]   = useState(null)
-  const [cfgEditionId, setCfgEditionId] = useState(null)
-
-  const cfgEvent   = events.find(e => e.id === (cfgEventId   ?? activeEvent?.id))   ?? activeEvent
-  const cfgEdition = editions.find(e => e.id === (cfgEditionId ?? activeEdition?.id)) ?? activeEdition
-  const cfgEditions = editions.filter(e => e.eventId === cfgEvent?.id).sort((a,b) => b.year - a.year)
+  const [showNewEvent,  setShowNewEvent]  = useState(false)
+  const [newEditionFor, setNewEditionFor] = useState(null)
 
   const visibleEvents = events.filter(e => !e.archived)
 
@@ -260,6 +253,27 @@ export default function Evenements() {
 
   function handleAddEdition(data) {
     addEdition(data)
+    refresh()
+  }
+
+  async function handleCloseEdition(e, edition) {
+    e.stopPropagation()
+    if (!window.confirm(`Clôturer "${edition.name}" ? L'analyse sera figée. Vous pouvez la réouvrir à tout moment.`)) return
+    closeEdition(edition.id)
+    // Consolidation silencieuse : envoie les données importées dans edition_analytics
+    try {
+      await fetch(`${API}/api/editions/${edition.id}/consolidate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year: edition.year, edition_name: edition.name }),
+      })
+    } catch { /* silencieux */ }
+    refresh()
+  }
+
+  function handleReopenEdition(e, edition) {
+    e.stopPropagation()
+    reopenEdition(edition.id)
     refresh()
   }
 
@@ -355,52 +369,66 @@ export default function Evenements() {
                 ) : (
                   <div className="divide-y" style={{ borderColor: C.border }}>
                     {evEditions.map(edition => {
-                      const statusInfo = EDITION_STATUS[edition.status] ?? EDITION_STATUS.upcoming
+                      const isClosed   = edition.status === 'closed' || edition.status === 'archived'
+                      const isActive   = edition.status === 'active'
                       return (
-                        <button
+                        <div
                           key={edition.id}
+                          className="flex items-center justify-between px-5 py-3 transition hover:bg-[#111D33] cursor-pointer"
                           onClick={() => selectEdition(edition)}
-                          className="w-full flex items-center justify-between px-5 py-3 transition hover:bg-[#111D33] text-left"
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="flex items-center justify-center w-8 h-8 rounded-lg"
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0"
                               style={{ background: '#080E1E', border: `1px solid ${C.border}` }}>
-                              <Calendar size={14} style={{ color: C.muted }} strokeWidth={1.8} />
+                              {isClosed
+                                ? <Lock size={13} style={{ color: '#6366F1' }} strokeWidth={1.8} />
+                                : <Calendar size={14} style={{ color: C.muted }} strokeWidth={1.8} />
+                              }
                             </div>
-                            <div>
-                              <p className="text-sm font-semibold text-white">{edition.name}</p>
-                              <div className="flex items-center gap-2 mt-0.5">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-white truncate">{edition.name}</p>
+                              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                                 <StatusBadge status={edition.status} />
                                 {edition.jaugeEst && (
                                   <span className="text-xs" style={{ color: C.muted }}>
-                                    ~{edition.jaugeEst.toLocaleString('fr-FR')} participants
+                                    ~{edition.jaugeEst.toLocaleString('fr-FR')} pers.
                                   </span>
                                 )}
-                                {edition.caEst && (
-                                  <span className="text-xs" style={{ color: C.muted }}>
-                                    · {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', notation: 'compact' }).format(edition.caEst)} estimé
+                                {edition.closedAt && (
+                                  <span className="text-xs" style={{ color: '#4A5568' }}>
+                                    Clôturée le {new Date(edition.closedAt).toLocaleDateString('fr-FR')}
                                   </span>
                                 )}
                               </div>
                             </div>
                           </div>
-                          <div className="flex items-center gap-3">
-                            <div className="flex gap-1">
-                              {(edition.modules ?? []).slice(0, 4).map(m => (
-                                <span key={m} className="px-1.5 py-0.5 rounded text-xs font-medium"
-                                  style={{ background: '#080E1E', color: C.muted, border: `1px solid ${C.border}` }}>
-                                  {m}
-                                </span>
-                              ))}
-                              {(edition.modules ?? []).length > 4 && (
-                                <span className="px-1.5 py-0.5 rounded text-xs" style={{ color: C.muted }}>
-                                  +{edition.modules.length - 4}
-                                </span>
-                              )}
-                            </div>
+                          <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                            {/* Clôturer / Réouvrir */}
+                            {isActive && (
+                              <button
+                                onClick={e => handleCloseEdition(e, edition)}
+                                title="Clôturer cette édition"
+                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition hover:opacity-80"
+                                style={{ background: 'rgba(99,102,241,0.1)', color: '#A5B4FC', border: '1px solid rgba(99,102,241,0.25)' }}
+                              >
+                                <Lock size={11} strokeWidth={2} />
+                                Clôturer
+                              </button>
+                            )}
+                            {isClosed && (
+                              <button
+                                onClick={e => handleReopenEdition(e, edition)}
+                                title="Réouvrir cette édition"
+                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition hover:opacity-80"
+                                style={{ background: 'rgba(16,185,129,0.08)', color: '#10B981', border: '1px solid rgba(16,185,129,0.2)' }}
+                              >
+                                <Unlock size={11} strokeWidth={2} />
+                                Réouvrir
+                              </button>
+                            )}
                             <ChevronRight size={14} style={{ color: C.muted }} />
                           </div>
-                        </button>
+                        </div>
                       )
                     })}
                   </div>
@@ -411,76 +439,6 @@ export default function Evenements() {
         </div>
       )}
 
-      {/* Panneau de configuration — avec sélecteurs événement + édition */}
-      {visibleEvents.length > 0 && (
-        <div className="rounded-2xl overflow-hidden" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
-
-          {/* Header + sélecteurs */}
-          <div className="px-5 py-4 space-y-3" style={{ borderBottom: `1px solid ${C.border}` }}>
-            <div className="flex items-center gap-2">
-              <Settings2 size={14} style={{ color: '#6366F1' }} strokeWidth={1.8} />
-              <p className="text-sm font-semibold text-white">Configuration</p>
-            </div>
-            {/* Sélecteur événement */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-2xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#4A5568', fontSize: '0.6rem' }}>
-                  Événement
-                </p>
-                <select
-                  className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none"
-                  style={{ background: '#111D33', border: '1px solid #1A2840', colorScheme: 'dark' }}
-                  value={cfgEvent?.id ?? ''}
-                  onChange={e => {
-                    setCfgEventId(e.target.value)
-                    setCfgEditionId(null) // reset édition quand on change d'événement
-                  }}>
-                  {visibleEvents.map(ev => (
-                    <option key={ev.id} value={ev.id}>{ev.name}</option>
-                  ))}
-                </select>
-              </div>
-              {/* Sélecteur édition */}
-              <div>
-                <p className="text-2xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#4A5568', fontSize: '0.6rem' }}>
-                  Édition
-                </p>
-                <select
-                  className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none"
-                  style={{ background: '#111D33', border: '1px solid #1A2840', colorScheme: 'dark' }}
-                  value={cfgEdition?.id ?? ''}
-                  onChange={e => {
-                    const ed = editions.find(x => x.id === e.target.value)
-                    if (ed) {
-                      setCfgEditionId(ed.id)
-                      // Mettre à jour l'édition active dans le contexte
-                      setActiveEditionId(ed.id)
-                      setActiveEventId(ed.eventId)
-                    }
-                  }}>
-                  {cfgEditions.map(ed => (
-                    <option key={ed.id} value={ed.id}>{ed.name}</option>
-                  ))}
-                  {cfgEditions.length === 0 && (
-                    <option value="">Aucune édition</option>
-                  )}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Contenu — uniquement canaux */}
-          <div className="p-5">
-            {cfgEdition ? (
-              <ChannelManager editionId={cfgEdition.id} />
-            ) : (
-              <p className="text-xs text-center py-4" style={{ color: '#4A5568' }}>
-                Sélectionnez une édition pour configurer les canaux.
-              </p>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Modals */}
       {showNewEvent && (

@@ -1,8 +1,9 @@
+import { useState, useEffect } from 'react'
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Cell, PieChart, Pie
 } from 'recharts'
-import { Users, Euro, ShoppingBag, Ticket, Gift, ArrowUpRight, ArrowDownRight, Info } from 'lucide-react'
+import { Users, Euro, ShoppingBag, Ticket, Upload, BarChart2, RefreshCw } from 'lucide-react'
 import KpiCard    from '../components/ui/KpiCard'
 import SectionCard from '../components/ui/SectionCard'
 import EmptyState  from '../components/ui/EmptyState'
@@ -10,6 +11,7 @@ import { fmt }    from '../lib/format'
 import { useEdition } from '../context/EditionContext'
 import { CONSO, BILLETTERIE, OVERVIEW, AFFLUENCE } from '../lib/editionsData'
 import { IS_DEMO } from '../lib/appMode'
+import { API } from '../lib/api'
 
 const PASS_CULTURE = [
   { year: '2023', ventes: 1259, ca: 188850 },
@@ -93,11 +95,29 @@ function NoData({ year, module }) {
 }
 
 export default function VueGlobale() {
-  const { year } = useEdition()
-  // En mode production, ne pas afficher les données de démo hardcodées
+  const { year, activeEdition } = useEdition()
+
+  // Demo mode : données hardcodées
   const conso   = IS_DEMO ? CONSO[year]      : null
   const billet  = IS_DEMO ? BILLETTERIE[year] : null
   const prev    = CONSO[year - 1]
+
+  // Production mode : données réelles depuis l'API
+  const [summary, setSummary]       = useState(null)
+  const [summaryLoading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (IS_DEMO || !activeEdition?.id) { setSummary(null); return }
+    setLoading(true)
+    fetch(`${API}/api/editions/${activeEdition.id}/summary`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d  => setSummary(d))
+      .catch(() => setSummary(null))
+      .finally(() => setLoading(false))
+  }, [activeEdition?.id])
+
+  const prodBillet = summary?.billetterie
+  const prodConso  = summary?.conso
 
   const delta_ca    = prev ? fmt.delta(conso?.ca, prev?.ca) : null
   const delta_cli   = prev ? fmt.delta(conso?.clients, prev?.clients) : null
@@ -115,27 +135,36 @@ export default function VueGlobale() {
     <div className="space-y-6 animate-slide-up">
 
       {/* Bandeau édition sélectionnée */}
-      <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl"
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl"
         style={{ background: 'color-mix(in srgb, var(--event-primary, #068EEA) 7%, transparent)', border: '1px solid color-mix(in srgb, var(--event-primary, #068EEA) 18%, transparent)' }}>
-        <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--event-primary, #068EEA)' }} />
-        <p className="text-xs text-[#8B9BB4]">
-          Édition affichée : <span className="text-white font-semibold">{year}</span>
-          {conso ? ` — Source : ${conso.plateforme}` : ' — Données limitées'}
-        </p>
+        <div className="flex items-center gap-3">
+          <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--event-primary, #068EEA)' }} />
+          <p className="text-xs text-[#8B9BB4]">
+            Édition affichée : <span className="text-white font-semibold">{activeEdition?.name ?? year}</span>
+            {IS_DEMO && conso ? ` — Source : ${conso.plateforme}` : ''}
+            {!IS_DEMO && summary?.has_data ? ` — ${summary.imports_count} import(s)` : ''}
+            {!IS_DEMO && !summary?.has_data && !summaryLoading ? ' — Aucune donnée importée' : ''}
+          </p>
+        </div>
+        {summaryLoading && <RefreshCw size={13} className="animate-spin text-[#4A5568]" />}
       </div>
 
-      {/* KPI */}
+      {/* KPI — valeurs réelles en production, démo en mode demo */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <KpiCard label="CA Consommation" value={conso ? fmt.currency(conso.ca) : '—'}
-          sub={conso ? 'Hors frais & consignes' : `Indisponible ${year}`}
+        <KpiCard label="CA Consommation"
+          value={IS_DEMO ? (conso ? fmt.currency(conso.ca) : '—') : (prodConso?.ca_ht ? fmt.currency(prodConso.ca_ht) : '—')}
+          sub={IS_DEMO ? (conso ? 'Hors frais & consignes' : `Indisponible ${year}`) : (prodConso ? 'Hors frais & consignes' : 'Pas de données conso')}
           delta={delta_ca} accent="blue" icon={Euro} />
-        <KpiCard label="Festivaliers" value={IS_DEMO && AFFLUENCE[year] ? fmt.number(AFFLUENCE[year].total) : billet?.scans ? fmt.number(billet.scans) : '—'}
-          sub="Entrées scannées" delta={delta_freq} accent="teal" icon={Users} />
-        <KpiCard label="CA Billetterie" value={billet?.ca_billet ? fmt.currency(billet.ca_billet) : '—'}
-          sub={billet?.ca_billet ? 'Toutes formules' : 'Non consolidé'}
-          delta={delta_billet} accent="gold" icon={Ticket} />
-        <KpiCard label="Clients acheteurs" value={conso ? fmt.number(conso.clients) : '—'}
-          sub={conso ? `Panier ${fmt.currency(conso.panier)}` : 'Indisponible'}
+        <KpiCard label="Participants / Scans"
+          value={IS_DEMO ? (IS_DEMO && AFFLUENCE[year] ? fmt.number(AFFLUENCE[year].total) : billet?.scans ? fmt.number(billet.scans) : '—') : (prodBillet?.nb_participants ? fmt.number(prodBillet.nb_participants) : '—')}
+          sub="Billetterie importée" delta={delta_freq} accent="teal" icon={Users} />
+        <KpiCard label="CA Billetterie"
+          value={IS_DEMO ? (billet?.ca_billet ? fmt.currency(billet.ca_billet) : '—') : (prodBillet?.ca_total ? fmt.currency(prodBillet.ca_total) : '—')}
+          sub={IS_DEMO ? (billet?.ca_billet ? 'Toutes formules' : 'Non consolidé') : (prodBillet ? 'Toutes formules importées' : 'Pas de données billet')}
+          delta={delta_billet} accent="gold" icon={BarChart2} />
+        <KpiCard label="Clients acheteurs"
+          value={IS_DEMO ? (conso ? fmt.number(conso.clients) : '—') : (prodConso?.n_clients ? fmt.number(prodConso.n_clients) : '—')}
+          sub={IS_DEMO ? (conso ? `Panier ${fmt.currency(conso.panier)}` : 'Indisponible') : (prodConso?.panier_moyen ? `Panier ${fmt.currency(prodConso.panier_moyen)}` : 'Importez la consommation')}
           delta={delta_cli} accent="violet" icon={ShoppingBag} />
       </div>
 
@@ -292,10 +321,142 @@ export default function VueGlobale() {
           </div>
         </SectionCard>
       </div>
-      </> : (
+      </> : summary?.has_data ? (
+        // ── Graphiques production : données réellement importées ───────────────
+        <div className="space-y-4">
+
+          {/* Billetterie importée */}
+          {prodBillet && (
+            <div className="grid xl:grid-cols-2 gap-4">
+              {/* Top tarifs */}
+              <SectionCard title="Top tarifs" subtitle={`${prodBillet.nb_commandes} commandes · ${prodBillet.nb_participants} participants`}>
+                <div className="space-y-2">
+                  {prodBillet.top_tarifs.slice(0, 6).map((t, i) => (
+                    <div key={t.tarif}>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <p className="text-xs text-[#8B9BB4] truncate pr-2">{t.tarif}</p>
+                        <div className="flex items-center gap-3 flex-shrink-0">
+                          <p className="num text-xs font-semibold text-white">{fmt.number(t.nb)}</p>
+                          <p className="num text-2xs text-[#4A5568] w-9 text-right">{t.pct}%</p>
+                        </div>
+                      </div>
+                      <div className="h-1.5 rounded-full" style={{ background: '#1A2840' }}>
+                        <div className="h-full rounded-full" style={{ width: `${t.pct}%`, background: i === 0 ? '#F59E0B' : '#068EEA' }} />
+                      </div>
+                    </div>
+                  ))}
+                  {prodBillet.top_tarifs.length === 0 && <p className="text-xs text-[#4A5568]">Aucun tarif détecté dans l'import.</p>}
+                </div>
+              </SectionCard>
+
+              {/* Courbe mensuelle */}
+              <SectionCard title="Courbe de vente" subtitle="Commandes par mois">
+                {prodBillet.ventes_par_mois.length > 1 ? (
+                  <ResponsiveContainer width="100%" height={180}>
+                    <AreaChart data={prodBillet.ventes_par_mois}>
+                      <defs>
+                        <linearGradient id="gradVente" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%"  stopColor="#F59E0B" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#F59E0B" stopOpacity={0}   />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid stroke="#1A2840" strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="mois" tick={{ fill: '#8B9BB4', fontSize: 10 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: '#8B9BB4', fontSize: 10 }} axisLine={false} tickLine={false} width={28} />
+                      <Tooltip contentStyle={{ background: '#111D33', border: '1px solid #1A2840', borderRadius: '0.75rem' }}
+                        formatter={v => [fmt.number(v), 'Commandes']} />
+                      <Area type="monotone" dataKey="nb" name="Commandes" stroke="#F59E0B" strokeWidth={2}
+                        fill="url(#gradVente)" dot={false} activeDot={{ r: 4, fill: '#F59E0B' }} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex items-center justify-center py-8">
+                    <p className="text-xs text-[#4A5568]">Données chronologiques insuffisantes.</p>
+                  </div>
+                )}
+              </SectionCard>
+            </div>
+          )}
+
+          {/* Consommation importée */}
+          {prodConso && (
+            <div className="grid xl:grid-cols-2 gap-4">
+              {/* Familles produit */}
+              <SectionCard title="CA par famille produit" subtitle="Depuis import consommation">
+                <div className="space-y-2">
+                  {prodConso.top_familles.slice(0, 6).map((f, i) => {
+                    const max = prodConso.top_familles[0]?.ca || 1
+                    return (
+                      <div key={f.name}>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <p className="text-xs text-[#8B9BB4] truncate pr-2">{f.name}</p>
+                          <p className="num text-xs font-semibold text-white">{fmt.currency(f.ca)}</p>
+                        </div>
+                        <div className="h-1.5 rounded-full" style={{ background: '#1A2840' }}>
+                          <div className="h-full rounded-full" style={{ width: `${(f.ca / max) * 100}%`, background: i === 0 ? '#068EEA' : '#2A3850' }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {prodConso.top_familles.length === 0 && <p className="text-xs text-[#4A5568]">Aucune famille détectée dans l'import conso.</p>}
+                </div>
+              </SectionCard>
+
+              {/* CA horaire */}
+              <SectionCard title="CA horaire" subtitle="Consommation par heure">
+                {prodConso.ca_horaire.length > 1 ? (
+                  <ResponsiveContainer width="100%" height={180}>
+                    <AreaChart data={prodConso.ca_horaire}>
+                      <defs>
+                        <linearGradient id="gradCH" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%"  stopColor="#068EEA" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#068EEA" stopOpacity={0}   />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid stroke="#1A2840" strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="heure" tick={{ fill: '#8B9BB4', fontSize: 10 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: '#8B9BB4', fontSize: 10 }} axisLine={false} tickLine={false}
+                        tickFormatter={v => `${(v/1000).toFixed(0)}k`} width={28} />
+                      <Tooltip contentStyle={{ background: '#111D33', border: '1px solid #1A2840', borderRadius: '0.75rem' }}
+                        formatter={v => [fmt.currency(v), 'CA HT']} />
+                      <Area type="monotone" dataKey="ca_ht" name="CA HT" stroke="#068EEA" strokeWidth={2}
+                        fill="url(#gradCH)" dot={false} activeDot={{ r: 4, fill: '#068EEA' }} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex items-center justify-center py-8">
+                    <p className="text-xs text-[#4A5568]">Données horaires non disponibles dans ce fichier.</p>
+                  </div>
+                )}
+              </SectionCard>
+            </div>
+          )}
+
+          {/* Si seulement un jeu de données est présent */}
+          {prodBillet && !prodConso && (
+            <div className="p-4 rounded-2xl flex items-center gap-3"
+              style={{ background: 'rgba(6,142,234,0.05)', border: '1px dashed rgba(6,142,234,0.2)' }}>
+              <Upload size={14} style={{ color: '#068EEA' }} strokeWidth={1.8} />
+              <p className="text-xs text-[#8B9BB4]">
+                Billetterie importée. Importez votre fichier de <span className="text-white font-medium">consommation</span> pour compléter la vue globale.
+              </p>
+            </div>
+          )}
+          {prodConso && !prodBillet && (
+            <div className="p-4 rounded-2xl flex items-center gap-3"
+              style={{ background: 'rgba(245,158,11,0.05)', border: '1px dashed rgba(245,158,11,0.2)' }}>
+              <Upload size={14} style={{ color: '#F59E0B' }} strokeWidth={1.8} />
+              <p className="text-xs text-[#8B9BB4]">
+                Consommation importée. Importez votre fichier de <span className="text-white font-medium">billetterie</span> pour compléter la vue globale.
+              </p>
+            </div>
+          )}
+
+        </div>
+      ) : (
         <EmptyState
-          message="Vue globale — en attente de données"
-          hint="Importez vos fichiers de billetterie, consommation ou invitations pour alimenter les indicateurs."
+          message="Aucune donnée importée pour cette édition"
+          hint="Importez vos fichiers billetterie et consommation depuis la page Importer données pour alimenter tous les indicateurs."
         />
       )}
 

@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
-import { Ticket, Users, Euro, Gift } from 'lucide-react'
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import { Ticket, Users, Euro, Gift, RefreshCw } from 'lucide-react'
 import KpiCard from '../components/ui/KpiCard'
 import SectionCard from '../components/ui/SectionCard'
+import EmptyState from '../components/ui/EmptyState'
 import BilletterieTracking from '../components/BilletterieTracking'
 import { fmt } from '../lib/format'
 import { useEdition } from '../context/EditionContext'
 import { BILLETTERIE, AFFLUENCE } from '../lib/editionsData'
 import { IS_DEMO } from '../lib/appMode'
+import { API } from '../lib/api'
 import { getChannels } from '../store/eventStore'
 
 const LS_CHANNEL_TAB = 'ea_billetterie_channel_tab'
@@ -67,11 +69,24 @@ export default function Billetterie() {
   const totalTickets2025 = REALISE_2025.reduce((s, r) => s + r.tickets, 0)
   const totalCA2025      = REALISE_2025.reduce((s, r) => s + r.ca,      0)
 
-  // Charger les canaux de l'édition active
+  // Production : données réelles depuis l'API
+  const [liveBillet, setLiveBillet]   = useState(null)
+  const [liveLoading, setLiveLoading] = useState(false)
+
   useEffect(() => {
     if (activeEdition?.id) {
       setChannels(getChannels(activeEdition.id))
     }
+  }, [activeEdition?.id])
+
+  useEffect(() => {
+    if (IS_DEMO || !activeEdition?.id) { setLiveBillet(null); return }
+    setLiveLoading(true)
+    fetch(`${API}/api/editions/${activeEdition.id}/summary`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setLiveBillet(d?.billetterie ?? null))
+      .catch(() => setLiveBillet(null))
+      .finally(() => setLiveLoading(false))
   }, [activeEdition?.id])
 
   function switchChannelTab(id) {
@@ -169,27 +184,31 @@ export default function Billetterie() {
       {tab === 'analyse' && (
         <>
           {/* Bandeau source */}
-          <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl"
+          <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl"
             style={{ background: 'rgba(6,142,234,0.07)', border: '1px solid rgba(6,142,234,0.15)' }}>
-            <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#068EEA' }} />
-            <p className="text-xs text-[#8B9BB4]">
-              Édition <span className="text-white font-semibold">{year}</span>
-              {b ? ` — Plateforme : ${b.plateforme}` : ' — Données billetterie limitées pour cette édition'}
-            </p>
+            <div className="flex items-center gap-3">
+              <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#068EEA' }} />
+              <p className="text-xs text-[#8B9BB4]">
+                Édition <span className="text-white font-semibold">{activeEdition?.name ?? year}</span>
+                {IS_DEMO && b ? ` — Plateforme : ${b.plateforme}` : ''}
+                {!IS_DEMO && liveBillet ? ` — ${liveBillet.nb_commandes} commandes importées` : ''}
+                {!IS_DEMO && !liveBillet && !liveLoading ? ' — Aucun import billetterie' : ''}
+              </p>
+            </div>
+            {liveLoading && <RefreshCw size={12} className="animate-spin text-[#4A5568]" />}
           </div>
 
           {/* KPI */}
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-            <KpiCard label="Festivaliers scannés"
-              value={af ? fmt.number(af.total) : b?.scans ? fmt.number(b.scans) : '—'}
-              sub="Entrées" delta={null} accent="blue" icon={Users} />
+            <KpiCard label="Participants"
+              value={IS_DEMO ? (af ? fmt.number(af.total) : b?.scans ? fmt.number(b.scans) : '—') : (liveBillet?.nb_participants ? fmt.number(liveBillet.nb_participants) : '—')}
+              sub="Billetterie importée" delta={null} accent="blue" icon={Users} />
             <KpiCard label="CA Billetterie"
-              value={b?.ca_billet ? fmt.currency(b.ca_billet) : '—'}
+              value={IS_DEMO ? (b?.ca_billet ? fmt.currency(b.ca_billet) : '—') : (liveBillet?.ca_total ? fmt.currency(liveBillet.ca_total) : '—')}
               sub="Toutes formules" delta={null} accent="gold" icon={Euro} />
-            <KpiCard label="Billets totaux"
-              value={IS_DEMO && year === 2025 ? fmt.number(totalTickets2025)
-                : b?.familles_tarifaires?.[0]?.nb ? fmt.number(b.familles_tarifaires[0].nb) : '—'}
-              sub={IS_DEMO && year === 2025 ? '31% invitations' : 'Principal format'}
+            <KpiCard label="Commandes"
+              value={IS_DEMO ? (IS_DEMO && year === 2025 ? fmt.number(totalTickets2025) : b?.familles_tarifaires?.[0]?.nb ? fmt.number(b.familles_tarifaires[0].nb) : '—') : (liveBillet?.nb_commandes ? fmt.number(liveBillet.nb_commandes) : '—')}
+              sub={IS_DEMO && year === 2025 ? '31% invitations' : 'Importées'}
               delta={null} accent="teal" icon={Ticket} />
             <KpiCard label="CSE / partenaires"
               value={IS_DEMO && year === 2025 ? fmt.number(2704) : '—'}
@@ -197,7 +216,58 @@ export default function Billetterie() {
               delta={null} accent="violet" icon={Gift} />
           </div>
 
-          {/* Familles tarifaires */}
+          {/* Production : graphiques depuis imports ─────────────────────────── */}
+          {!IS_DEMO && liveBillet && liveBillet.top_tarifs.length > 0 && (
+            <div className="grid xl:grid-cols-2 gap-4">
+              <SectionCard title="Top tarifs importés" subtitle={`${liveBillet.nb_commandes} commandes · ${liveBillet.nb_participants} participants`}>
+                <div className="space-y-2">
+                  {liveBillet.top_tarifs.slice(0, 8).map((t, i) => (
+                    <div key={t.tarif}>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <p className="text-xs text-[#8B9BB4] truncate pr-2">{t.tarif}</p>
+                        <div className="flex items-center gap-3 flex-shrink-0">
+                          <p className="num text-xs font-semibold text-white">{fmt.number(t.nb)}</p>
+                          <p className="num text-2xs text-[#4A5568] w-9 text-right">{t.pct}%</p>
+                        </div>
+                      </div>
+                      <div className="h-1.5 rounded-full" style={{ background: '#1A2840' }}>
+                        <div className="h-full rounded-full" style={{ width: `${t.pct}%`, background: i === 0 ? '#F59E0B' : i < 3 ? '#068EEA' : '#2A3850' }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </SectionCard>
+              {liveBillet.ventes_par_mois.length > 1 && (
+                <SectionCard title="Courbe de vente" subtitle="Commandes par mois">
+                  <ResponsiveContainer width="100%" height={200}>
+                    <AreaChart data={liveBillet.ventes_par_mois}>
+                      <defs>
+                        <linearGradient id="gradBV" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%"  stopColor="#F59E0B" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#F59E0B" stopOpacity={0}   />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid stroke="#1A2840" strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="mois" tick={{ fill: '#8B9BB4', fontSize: 10 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: '#8B9BB4', fontSize: 10 }} axisLine={false} tickLine={false} width={28} />
+                      <Tooltip contentStyle={{ background: '#111D33', border: '1px solid #1A2840', borderRadius: '0.75rem' }}
+                        formatter={v => [fmt.number(v), 'Commandes']} />
+                      <Area type="monotone" dataKey="nb" stroke="#F59E0B" strokeWidth={2}
+                        fill="url(#gradBV)" dot={false} activeDot={{ r: 4, fill: '#F59E0B' }} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </SectionCard>
+              )}
+            </div>
+          )}
+          {!IS_DEMO && !liveBillet && !liveLoading && (
+            <EmptyState
+              message="Aucune billetterie importée pour cette édition"
+              hint="Importez un fichier billetterie depuis la page Importer données pour alimenter cet onglet."
+            />
+          )}
+
+          {/* Familles tarifaires — demo uniquement */}
           {b?.familles_tarifaires && (
             <SectionCard title={`Répartition par formule — ${year}`} subtitle="Volumes par type de billet">
               <div className="space-y-2">
