@@ -31,6 +31,7 @@ Sortie normalisée pour chaque parser :
 import pandas as pd
 import numpy as np
 from typing import Optional
+from datetime import datetime, timezone
 
 from services.billetterie_analyzer import analyze_billetterie
 
@@ -43,10 +44,21 @@ def _safe_sum(series) -> Optional[float]:
 
 
 def _monthly_trend(series_dates, df) -> list:
+    # Plafond : on n'accepte aucune date future (mois > mois courant)
+    # Évite les artefacts de parsing date quand le format jour/mois est ambigu
+    now_ym = datetime.now(timezone.utc).strftime('%Y-%m')
+
     dates = pd.to_datetime(series_dates, errors='coerce', dayfirst=True)
     tmp = df.copy()
     tmp['_m'] = dates.dt.to_period('M').astype(str)
-    monthly = tmp[tmp['_m'].str.match(r'\d{4}-\d{2}', na=False)].groupby('_m').size().reset_index(name='nb')
+    monthly = (
+        tmp[
+            tmp['_m'].str.match(r'\d{4}-\d{2}', na=False) &
+            (tmp['_m'] <= now_ym)   # exclure les mois futurs
+        ]
+        .groupby('_m').size()
+        .reset_index(name='nb')
+    )
     return [{'mois': r['_m'], 'nb': int(r['nb'])} for _, r in monthly.iterrows()]
 
 
@@ -229,35 +241,46 @@ def parse_bizouk(df: pd.DataFrame, filename: str) -> dict:
         return None
 
     # Mapping des colonnes réelles Bizouk
-    c_cmd   = find('commande no', 'id commande', 'n° commande', 'référence', 'reference')
-    c_date  = find('date de la commande', 'date commande', 'date de commande', 'date')
-    c_tarif = find('description de la ligne', 'description', 'ticket', 'type de billet', 'nom du billet', 'formule')
-    # Utiliser "Montant total de la ligne" (correct même en multi-lignes par commande)
-    # Ne PAS utiliser "Montant total de la commande" qui est dupliqué quand commande multi-produits
-    c_price = find('montant total de la ligne', 'montant total de la commande',
-                   'montant pay', 'total', 'montant', 'prix unitaire')
-    c_qty   = find('quantit', 'qty', 'nombre')
-    c_statut = find('statut de la commande', 'statut', 'status')
+    c_cmd        = find('commande no', 'id commande', 'n° commande', 'référence', 'reference')
+    c_date       = find('date de la commande', 'date commande', 'date de commande', 'date')
+    c_tarif      = find('description de la ligne', 'description', 'ticket', 'type de billet', 'nom du billet', 'formule')
+    # Montant total de la ligne = montant brut par ligne (correct en multi-produits)
+    c_price      = find('montant total de la ligne', 'montant total de la commande',
+                        'montant pay', 'total', 'montant', 'prix unitaire')
+    # Commission Bizouk — pour calculer le CA net reversé à l'organisateur
+    c_commission = find('montant de commission', 'commission')
+    c_qty        = find('quantit', 'qty', 'nombre')
+    c_statut     = find('statut de la commande', 'statut', 'status')
 
-    # Filtrer les commandes annulées si la colonne statut est présente
+    # Stratégie statut : liste noire (exclure annulés/remboursés)
+    # → inclut les commandes en attente, en cours, validées, etc.
+    # → correspond au comportement du dashboard Bizouk
     if c_statut is not None:
-        valides = df[c_statut].astype(str).str.lower().str.contains(
-            r'valid|paid|confirm|success|complet', regex=True, na=False
+        invalides = df[c_statut].astype(str).str.lower().str.contains(
+            r'annul|cancel|remboursé|remboursee|refund|rembours', regex=True, na=False
         )
-        df = df[valides].copy()
+        df = df[~invalides].copy()
 
     # Commandes uniques
-    nb_cmd  = int(df[c_cmd].nunique()) if c_cmd else int(len(df))
+    nb_cmd = int(df[c_cmd].nunique()) if c_cmd else int(len(df))
 
-    # Participants = somme des quantités (chaque ligne = N billets d'un même type)
+    # Participants = somme des quantités
     if c_qty is not None:
         qty_num = pd.to_numeric(df[c_qty], errors='coerce').fillna(1)
         nb_part = int(qty_num.sum())
     else:
         nb_part = int(len(df))
 
-    # CA = somme des montants de ligne (pas le montant total commande qui est dupliqué)
-    ca = _safe_sum(df[c_price]) if c_price else None
+    # CA brut = somme des montants de ligne
+    ca_brut       = _safe_sum(df[c_price])      if c_price      else None
+    # Commission = somme des commissions Bizouk
+    ca_commission = _safe_sum(df[c_commission]) if c_commission else None
+
+    # CA net = ce que Bizouk reverse à l'organisateur (= brut - commission)
+    if ca_brut is not None and ca_commission is not None:
+        ca = round(ca_brut - ca_commission, 2)
+    else:
+        ca = ca_brut   # fallback : pas de colonne commission → garder brut
 
     # Tarifs / formules
     nb_tarifs, top = _top_tarifs(df[c_tarif]) if c_tarif else (0, [])
@@ -274,8 +297,10 @@ def parse_bizouk(df: pd.DataFrame, filename: str) -> dict:
     }
     result = _normalize('bizouk', nb_cmd, nb_part, ca, nb_tarifs, top,
                         monthly, {}, filename, len(df), list(df.columns), ids)
-    result['_col_map'] = _col_map
-    result['_df_ref']  = df  # temporary reference for analyzer
+    result['_col_map']      = _col_map
+    result['_df_ref']       = df
+    result['ca_brut']       = ca_brut        # CA avant déduction commission
+    result['ca_commission'] = ca_commission  # commission Bizouk
     return result
 
 
