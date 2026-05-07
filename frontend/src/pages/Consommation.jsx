@@ -6,11 +6,12 @@ import {
 import {
   ShoppingCart, Euro, Users, Star, Info,
   RefreshCw, Upload, CheckCircle, AlertCircle,
-  ChevronDown, RotateCcw, X
+  RotateCcw, X
 } from 'lucide-react'
 import KpiCard     from '../components/ui/KpiCard'
 import SectionCard from '../components/ui/SectionCard'
 import EmptyState  from '../components/ui/EmptyState'
+import MultiSelect from '../components/ui/MultiSelect'
 import { fmt }     from '../lib/format'
 import { useEdition } from '../context/EditionContext'
 import { CONSO, OVERVIEW } from '../lib/editionsData'
@@ -57,92 +58,6 @@ function NoDataSmall({ detail }) {
   )
 }
 
-// ── MultiSelect ───────────────────────────────────────────────────────────────
-function MultiSelect({ options, selected, onChange, placeholder = 'Sélectionner…', label }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
-
-  useEffect(() => {
-    function h(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [])
-
-  const display = selected.length === 0 ? placeholder
-    : selected.length <= 2 ? selected.join(', ')
-    : `${selected.slice(0, 2).join(', ')} +${selected.length - 2}`
-
-  return (
-    <div className="relative" ref={ref}>
-      {label && (
-        <p className="text-xs font-semibold uppercase tracking-wider mb-1.5"
-          style={{ color: '#4A5568', fontSize: '0.6rem' }}>{label}</p>
-      )}
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center justify-between gap-2 w-full px-2.5 py-2 rounded-lg text-xs transition hover:border-[#2A3850]"
-        style={{
-          background: '#080E1E',
-          border: `1px solid ${open ? '#2A3850' : '#1A2840'}`,
-          color: selected.length ? '#F0F4FF' : '#8B9BB4',
-        }}
-      >
-        <span className="truncate">{display}</span>
-        <div className="flex items-center gap-1 flex-shrink-0">
-          {selected.length > 0 && (
-            <span className="px-1.5 py-0.5 rounded-full text-2xs font-bold"
-              style={{ background: 'rgba(6,142,234,0.15)', color: '#21AAFA' }}>
-              {selected.length}
-            </span>
-          )}
-          <ChevronDown size={11} className="text-[#4A5568]" />
-        </div>
-      </button>
-
-      {open && options.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 rounded-xl shadow-xl overflow-hidden"
-          style={{ background: '#111D33', border: '1px solid #1A2840', maxHeight: '240px', overflowY: 'auto' }}>
-          {/* Header : Tous / Aucun */}
-          <div className="flex items-center gap-3 px-3 py-2 sticky top-0"
-            style={{ background: '#111D33', borderBottom: '1px solid #1A2840' }}>
-            <button className="text-xs text-[#068EEA] hover:text-[#21AAFA] font-semibold"
-              onClick={() => onChange(options.map(o => typeof o === 'string' ? o : o.value))}>
-              Tous
-            </button>
-            <span className="text-[#1A2840]">·</span>
-            <button className="text-xs text-[#4A5568] hover:text-[#8B9BB4] font-semibold"
-              onClick={() => onChange([])}>
-              Aucun
-            </button>
-          </div>
-          {options.map(opt => {
-            const val = typeof opt === 'string' ? opt : opt.value
-            const lbl = typeof opt === 'string' ? opt : opt.label
-            const checked = selected.includes(val)
-            return (
-              <label key={val}
-                className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-[#1A2840] transition-colors"
-                style={{ borderBottom: '1px solid rgba(26,40,64,0.4)' }}>
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => checked
-                    ? onChange(selected.filter(s => s !== val))
-                    : onChange([...selected, val])
-                  }
-                  className="accent-[#068EEA] w-3.5 h-3.5 flex-shrink-0"
-                />
-                <span className="text-xs truncate" style={{ color: checked ? '#F0F4FF' : '#8B9BB4' }}>
-                  {lbl}
-                </span>
-              </label>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ── Barre horizontale ─────────────────────────────────────────────────────────
 function HBar({ label, value, max, color = '#068EEA', labelFmt = v => fmt.currency(v) }) {
@@ -160,49 +75,36 @@ function HBar({ label, value, max, color = '#068EEA', labelFmt = v => fmt.curren
   )
 }
 
-// ── Tableau acheteurs ─────────────────────────────────────────────────────────
-function AcheteurTable({ rows, valueKey, valueLabel, valueFmt }) {
+// ── Liste acheteurs — format compact (nom prénom + id + valeur) ───────────────
+function AcheteurList({ rows, valueKey, valueFmt }) {
   if (!rows?.length) return (
-    <NoDataSmall detail="Colonnes 'ID acheteur', 'Nom acheteur', 'Prénom acheteur' absentes ou vides dans ce fichier." />
+    <NoDataSmall detail="Colonnes 'ID acheteur' absente ou aucune donnée disponible." />
   )
-  const hasNom    = rows.some(r => r.nom    && r.nom    !== 'nan')
-  const hasPrenom = rows.some(r => r.prenom && r.prenom !== 'nan')
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full" style={{ borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ borderBottom: '1px solid #1A2840' }}>
-            <th className="text-left py-2 pr-3 font-semibold uppercase tracking-wider"
-              style={{ color: '#4A5568', fontSize: '0.6rem' }}>#</th>
-            {hasNom    && <th className="text-left py-2 pr-3 font-semibold uppercase tracking-wider"
-              style={{ color: '#4A5568', fontSize: '0.6rem' }}>Nom acheteur</th>}
-            {hasPrenom && <th className="text-left py-2 pr-3 font-semibold uppercase tracking-wider"
-              style={{ color: '#4A5568', fontSize: '0.6rem' }}>Prénom acheteur</th>}
-            <th className="text-left py-2 pr-3 font-semibold uppercase tracking-wider"
-              style={{ color: '#4A5568', fontSize: '0.6rem' }}>ID acheteur</th>
-            <th className="text-right py-2 font-semibold uppercase tracking-wider"
-              style={{ color: '#4A5568', fontSize: '0.6rem' }}>{valueLabel}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => {
-            const nom    = r.nom    && r.nom    !== 'nan' ? r.nom    : '—'
-            const prenom = r.prenom && r.prenom !== 'nan' ? r.prenom : '—'
-            return (
-              <tr key={r.id + i}
-                className="hover:bg-[#0D1526] transition-colors"
-                style={{ borderBottom: '1px solid rgba(26,40,64,0.5)' }}>
-                <td className="py-2 pr-3 num font-bold text-xs" style={{ color: '#4A5568' }}>{i + 1}</td>
-                {hasNom    && <td className="py-2 pr-3 text-xs text-[#8B9BB4] max-w-[100px] truncate">{nom}</td>}
-                {hasPrenom && <td className="py-2 pr-3 text-xs text-[#8B9BB4] max-w-[100px] truncate">{prenom}</td>}
-                <td className="py-2 pr-3 font-mono text-xs text-[#4A5568] max-w-[100px] truncate"
-                  title={r.id}>{String(r.id).slice(0, 12)}</td>
-                <td className="py-2 num text-right text-xs font-semibold text-white">{valueFmt(r[valueKey])}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+    <div className="space-y-2 mt-1">
+      {rows.map((r, i) => {
+        const nom    = r.nom    && r.nom    !== 'nan' ? r.nom    : null
+        const prenom = r.prenom && r.prenom !== 'nan' ? r.prenom : null
+        const fullName = [prenom, nom].filter(Boolean).join(' ') || null
+        return (
+          <div key={r.id + i} className="flex items-center gap-3">
+            <span className="num text-2xs font-bold w-5 flex-shrink-0 text-center"
+              style={{ color: '#4A5568' }}>{i + 1}</span>
+            <div className="flex-1 min-w-0">
+              {fullName
+                ? <p className="text-xs font-semibold text-white truncate">{fullName}</p>
+                : null
+              }
+              <p className="font-mono truncate"
+                style={{ fontSize: '0.65rem', color: '#4A5568' }}
+                title={r.id}>{String(r.id)}</p>
+            </div>
+            <p className="num text-xs font-semibold text-white flex-shrink-0">
+              {valueFmt(r[valueKey])}
+            </p>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -344,7 +246,11 @@ export default function Consommation() {
   const articleOptions     = (liveKpi?.top_articles ?? []).map(a => ({ value: a.art, label: `${a.art} (${fmt.number(a.qty)})` }))
   const articleOptionsBar  = (liveKpi?.top_articles_bar ?? []).map(a => ({ value: a.art, label: `${a.art} (${fmt.number(a.qty)})` }))
   const pdvTypeOptions     = [...new Set([...(liveKpi?.top_pdv_type ?? []).map(t => t.type)])].map(t => ({ value: t, label: t }))
-  const pdvNameOptions     = (liveKpi?.bar_pdv_names ?? []).map(n => ({ value: n, label: n }))
+  // Tous les noms de PDV (pas seulement BAR) — label avec type si connu
+  const pdvNameOptions     = (liveKpi?.top_pdv_name ?? []).map(p => {
+    const type = liveKpi?.pdv_name_type_map?.[p.pdv] ?? ''
+    return { value: p.pdv, label: type ? `${p.pdv} (${type})` : p.pdv }
+  })
 
   // ── Articles filtrés ──────────────────────────────────────────────────────
   const filteredArticles    = filterArticles.length === 0
@@ -365,11 +271,15 @@ export default function Consommation() {
     ? (liveKpi?.top_pdv_name ?? [])
     : (liveKpi?.top_pdv_name ?? []).filter(p => filterPdvTypes.includes(pdvNameTypeMap[p.pdv] ?? ''))
 
-  // ── Courbe horaire avec filtre PDV multi-select ───────────────────────────
+  // ── Courbe horaire : filtre PDV → seulement les PDVs de type BAR ────────────
+  // Si aucun PDV sélectionné : total tous bars. Sinon : somme des PDVs BAR sélectionnés.
   const filteredHoraire = (() => {
     if (!liveKpi) return []
     if (filterPdvNames.length === 0) return liveKpi.ca_horaire ?? []
-    const arrays = filterPdvNames.map(n => liveKpi.ca_horaire_by_pdv?.[n] ?? [])
+    const typeMap = liveKpi.pdv_name_type_map ?? {}
+    const barPdvs = filterPdvNames.filter(n => (typeMap[n] ?? '').toUpperCase() === 'BAR')
+    if (barPdvs.length === 0) return [] // aucun PDV BAR dans la sélection
+    const arrays = barPdvs.map(n => liveKpi.ca_horaire_by_pdv?.[n] ?? [])
     return combineHoraire(arrays)
   })()
   const livePic = filteredHoraire.length > 0
@@ -719,11 +629,11 @@ export default function Consommation() {
             <div className="grid grid-cols-2 xl:grid-cols-3 gap-3 p-4 rounded-2xl"
               style={{ background: '#0D1526', border: '1px solid #1A2840' }}>
               <MultiSelect
-                label="Filtrer par PDV BAR (horaire)"
+                label="Nom de point de vente"
                 options={pdvNameOptions}
                 selected={filterPdvNames}
                 onChange={setFilterPdvNames}
-                placeholder="Tous les PDV bars"
+                placeholder="Tous les points de vente"
               />
               <MultiSelect
                 label="Filtrer par type PDV"
@@ -840,20 +750,18 @@ export default function Consommation() {
 
             {/* Tableaux acheteurs */}
             <div className="grid xl:grid-cols-2 gap-4">
-              <SectionCard title="Top 10 acheteurs — par CA total dépensé">
-                <AcheteurTable
+              <SectionCard title="Top 10 acheteurs — par CA" subtitle="Total CA HT dépensé">
+                <AcheteurList
                   rows={liveKpi.top_acheteurs_ca}
                   valueKey="ca"
-                  valueLabel="CA HT"
                   valueFmt={v => fmt.currency(v)}
                 />
               </SectionCard>
-              <SectionCard title="Top 10 acheteurs — par fréquence (nb transactions)">
-                <AcheteurTable
+              <SectionCard title="Top 10 acheteurs — par fréquence" subtitle="Nombre de transactions">
+                <AcheteurList
                   rows={liveKpi.top_acheteurs_nb}
                   valueKey="nb"
-                  valueLabel="Transactions"
-                  valueFmt={v => `${fmt.number(v)}`}
+                  valueFmt={v => `${fmt.number(v)} trans.`}
                 />
               </SectionCard>
             </div>
