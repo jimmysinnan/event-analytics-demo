@@ -186,15 +186,33 @@ def parse_weezevent(df: pd.DataFrame, filename: str) -> dict:
                     return orig
         return None
 
-    c_cmd   = find('numéro de commande', 'numero de commande', 'n° commande')
-    c_date  = find('date commande', 'date de commande')
-    c_tarif = find('tarif') if 'groupe' not in str(find('tarif') or '').lower() else None
-    c_price = find('montant ttc', 'montant', 'total')
-    c_canal = find('canal', 'origine')
+    c_cmd        = find('numéro de commande', 'numero de commande', 'n° commande')
+    c_date       = find('date commande', 'date de commande')
+    c_tarif      = find('tarif') if 'groupe' not in str(find('tarif') or '').lower() else None
+    c_price      = find('montant ttc', 'montant', 'total')
+    c_canal      = find('canal', 'origine')
+    c_prenom_part = find('prénom participant', 'prenom participant', 'prénom part')
+    c_nom_part    = find('nom participant', 'nom part')
 
-    nb_cmd  = int(df[c_cmd].nunique()) if c_cmd else int(len(df))
-    nb_part = int(len(df))
-    ca      = _safe_sum(df[c_price]) if c_price else None
+    nb_cmd = int(df[c_cmd].nunique()) if c_cmd else int(len(df))
+
+    # Participants = individus uniques (Prénom + Nom) pour ne pas compter
+    # plusieurs fois un acheteur qui détient plusieurs billets.
+    # Fallback : commandes uniques → nombre de billets (len(df) = surcompte).
+    if c_prenom_part and c_nom_part:
+        identite = (
+            df[c_prenom_part].astype(str).str.strip().str.upper()
+            + '|' +
+            df[c_nom_part].astype(str).str.strip().str.upper()
+        )
+        # Exclure les lignes sans nom (NaN/vide)
+        nb_part = int(identite[identite.str.strip('|') != ''].nunique())
+    elif c_cmd:
+        nb_part = int(df[c_cmd].nunique())  # 1 commande = 1 acheteur
+    else:
+        nb_part = int(len(df))
+
+    ca = _safe_sum(df[c_price]) if c_price else None
 
     nb_tarifs, top = _top_tarifs(df[c_tarif]) if c_tarif else (0, [])
     monthly  = _monthly_trend(df[c_date], df) if c_date else []
