@@ -711,6 +711,29 @@ def current_state(edition_id: str, channel_id: str = None):
     return jsonify(get_state(edition_id))
 
 
+@app.get("/api/imports/{edition_id}/latest")
+def latest_import(edition_id: str, source: str = None):
+    """Dernier import actif pour une édition, filtrable par source (bizouk, weezevent…)."""
+    with get_db() as conn:
+        q    = "SELECT raw_json, source, source_label, filename, imported_at FROM imports WHERE edition_id = ? AND status = 'active'"
+        args = [edition_id]
+        if source:
+            q += " AND source = ?"
+            args.append(source)
+        q  += " ORDER BY imported_at DESC LIMIT 1"
+        row = conn.execute(q, args).fetchone()
+    if not row:
+        return JSONResponse(content=None)
+    parsed = json.loads(row['raw_json'])
+    return JSONResponse(content=jsonify({
+        **parsed,
+        'source':       row['source'],
+        'source_label': row['source_label'],
+        'filename':     row['filename'],
+        'imported_at':  row['imported_at'],
+    }))
+
+
 @app.get("/api/import/{import_id}/detail")
 def get_import_detail(import_id: str):
     """Retourne le résultat complet (raw_json) d'un import spécifique."""

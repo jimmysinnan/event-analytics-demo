@@ -55,10 +55,143 @@ function Tip({ active, payload, label }) {
   )
 }
 
+// ── Vue par source (sous-onglet Live) ─────────────────────────────────────────
+function LiveSourceView({ editionId, source, sourceLabel }) {
+  const [data,    setData]    = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [trigger, setTrigger] = useState(0)
+
+  useEffect(() => {
+    if (!editionId) return
+    setLoading(true)
+    fetch(`${API}/api/imports/${editionId}/latest?source=${source}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(setData)
+      .catch(() => setData(null))
+      .finally(() => setLoading(false))
+  }, [editionId, source, trigger])
+
+  const PBT_COLORS = ['#F59E0B', '#068EEA', '#10B981', '#6366F1', '#EF4444']
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-12 gap-2">
+      <RefreshCw size={14} className="animate-spin text-[#4A5568]" />
+      <p className="text-xs text-[#4A5568]">Chargement {sourceLabel}…</p>
+    </div>
+  )
+
+  if (!data) return (
+    <EmptyState
+      message={`Aucun import ${sourceLabel} pour cette édition`}
+      hint={`Importez un fichier ${sourceLabel} depuis la page Importer données.`}
+    />
+  )
+
+  const pbt = data.participants_by_tarif
+    ? Object.entries(data.participants_by_tarif)
+        .sort((a, b) => b[1] - a[1])
+    : []
+
+  const totalPart = pbt.reduce((s, [, n]) => s + n, 0) || data.nb_participants || 0
+
+  return (
+    <div className="space-y-4">
+      {/* Bandeau */}
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl"
+        style={{ background: 'rgba(6,142,234,0.07)', border: '1px solid rgba(6,142,234,0.15)' }}>
+        <div className="flex items-center gap-3">
+          <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#068EEA' }} />
+          <p className="text-xs text-[#8B9BB4]">
+            <span className="text-white font-semibold">{sourceLabel}</span>
+            {` — ${data.filename ?? ''}`}
+            {data.imported_at ? ` — importé le ${new Date(data.imported_at).toLocaleDateString('fr-FR')}` : ''}
+          </p>
+        </div>
+        <button onClick={() => setTrigger(t => t + 1)}
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition hover:bg-[#1A2840]"
+          style={{ color: '#8B9BB4' }}>
+          <RefreshCw size={11} strokeWidth={2} /> Actualiser
+        </button>
+      </div>
+
+      {/* KPIs — sans participants simple */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="p-4 rounded-2xl" style={{ background: '#0D1526', border: '1px solid #1A2840' }}>
+          <p className="text-xs text-[#8B9BB4] mb-1">Commandes</p>
+          <p className="num text-2xl font-bold text-white">{fmt.number(data.nb_commandes)}</p>
+          <p className="text-xs text-[#4A5568] mt-0.5">uniques</p>
+        </div>
+        <div className="p-4 rounded-2xl" style={{ background: '#0D1526', border: '1px solid #1A2840' }}>
+          <p className="text-xs text-[#8B9BB4] mb-1">CA net</p>
+          <p className="num text-2xl font-bold text-[#F59E0B]">{data.ca_total ? fmt.currency(data.ca_total) : '—'}</p>
+          <p className="text-xs text-[#4A5568] mt-0.5">hors commission</p>
+        </div>
+      </div>
+
+      {/* Répartition participants par groupe de tarif */}
+      <div className="p-4 rounded-2xl" style={{ background: '#0D1526', border: '1px solid #1A2840' }}>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-semibold text-white">Participants par groupe de tarif</p>
+          <span className="num text-xs font-bold px-2.5 py-1 rounded-full"
+            style={{ background: 'rgba(6,142,234,0.15)', color: '#21AAFA' }}>
+            {fmt.number(totalPart)} billets
+          </span>
+        </div>
+        {pbt.length > 0 ? (
+          <div className="space-y-3">
+            {pbt.map(([grp, nb], i) => {
+              const pct = totalPart > 0 ? Math.round((nb / totalPart) * 100) : 0
+              return (
+                <div key={grp}>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs text-[#8B9BB4] truncate pr-3 flex-1">{grp}</p>
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <p className="num text-sm font-bold text-white">{fmt.number(nb)}</p>
+                      <p className="num text-xs text-[#4A5568] w-9 text-right">{pct}%</p>
+                    </div>
+                  </div>
+                  <div className="h-2 rounded-full" style={{ background: '#1A2840' }}>
+                    <div className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${pct}%`, background: PBT_COLORS[i % PBT_COLORS.length] }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="text-xs text-[#4A5568]">Breakdown non disponible — vérifiez la colonne "Groupe de tarif" dans le fichier.</p>
+        )}
+      </div>
+
+      {/* Rythme de vente */}
+      {data.ventes_par_mois?.length > 1 && (
+        <div className="p-4 rounded-2xl" style={{ background: '#0D1526', border: '1px solid #1A2840' }}>
+          <p className="text-xs font-semibold text-[#8B9BB4] uppercase tracking-wider mb-3">Rythme de vente</p>
+          <ResponsiveContainer width="100%" height={120}>
+            <BarChart data={data.ventes_par_mois} barSize={14} barCategoryGap="25%">
+              <CartesianGrid vertical={false} stroke="#1A2840" strokeDasharray="3 3" />
+              <XAxis dataKey="mois" tick={{ fill: '#8B9BB4', fontSize: 9 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: '#8B9BB4', fontSize: 9 }} axisLine={false} tickLine={false} width={24} />
+              <Tooltip contentStyle={{ background: '#111D33', border: '1px solid #1A2840', borderRadius: '0.75rem' }}
+                formatter={v => [fmt.number(v), 'Commandes']} />
+              <Bar dataKey="nb" radius={[3, 3, 0, 0]}>
+                {data.ventes_par_mois.map((d, i) => (
+                  <Cell key={d.mois} fill={i === data.ventes_par_mois.length - 1 ? '#F59E0B' : '#068EEA'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Billetterie() {
   const { year, activeEdition } = useEdition()
-  const [tab,        setTab]        = useState('analyse')
-  const [channelTab, setChannelTab] = useState(() =>
+  const [tab,         setTab]         = useState('analyse')
+  const [liveSource,  setLiveSource]  = useState('total')  // 'total' | 'bizouk' | 'weezevent'
+  const [channelTab,  setChannelTab]  = useState(() =>
     localStorage.getItem(LS_CHANNEL_TAB) ?? 'total'
   )
   const [channels, setChannels] = useState([])
@@ -69,18 +202,14 @@ export default function Billetterie() {
   const totalTickets2025 = REALISE_2025.reduce((s, r) => s + r.tickets, 0)
   const totalCA2025      = REALISE_2025.reduce((s, r) => s + r.ca,      0)
 
-  // Production : données réelles depuis l'API
-  const [liveBillet,    setLiveBillet]    = useState(null)
-  const [liveLoading,   setLiveLoading]   = useState(false)
+  const [liveBillet,     setLiveBillet]     = useState(null)
+  const [liveLoading,    setLiveLoading]    = useState(false)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
 
   useEffect(() => {
-    if (activeEdition?.id) {
-      setChannels(getChannels(activeEdition.id))
-    }
+    if (activeEdition?.id) setChannels(getChannels(activeEdition.id))
   }, [activeEdition?.id])
 
-  // Re-fetch quand : édition change, refresh demandé, ou passage sur l'onglet Analyse
   useEffect(() => {
     if (IS_DEMO || !activeEdition?.id) { setLiveBillet(null); return }
     setLiveLoading(true)
@@ -121,64 +250,69 @@ export default function Billetterie() {
       {tab === 'suivi' && (
         <div className="space-y-4">
 
-          {/* Switch canaux — mémorisé */}
-          {channels.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <p className="text-xs font-semibold uppercase tracking-wider mr-1" style={{ color: '#4A5568' }}>Vue :</p>
-
-              {/* Total */}
-              <button
-                onClick={() => switchChannelTab('total')}
-                className="px-3 py-1.5 rounded-xl text-xs font-semibold transition"
-                style={{
-                  background: channelTab === 'total' ? 'rgba(6,142,234,0.15)' : 'rgba(255,255,255,0.03)',
-                  border:     `1px solid ${channelTab === 'total' ? 'rgba(6,142,234,0.35)' : '#1A2840'}`,
-                  color:      channelTab === 'total' ? '#21AAFA' : '#8B9BB4',
-                }}>
-                Tous canaux
-              </button>
-
-              {/* Un bouton par canal */}
-              {channels.map(ch => {
-                const active = channelTab === ch.id
-                return (
-                  <button
-                    key={ch.id}
-                    onClick={() => switchChannelTab(ch.id)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition"
-                    style={{
-                      background: active ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)',
-                      border:     `1px solid ${active ? '#6366F1' : '#1A2840'}`,
-                      color:      active ? '#A5B4FC' : '#8B9BB4',
-                    }}>
-                    <span className="text-sm leading-none">{ch.icon ?? '📋'}</span>
-                    {ch.name}
-                  </button>
-                )
-              })}
+          {/* Sous-onglets source */}
+          {!IS_DEMO && (
+            <div className="flex items-center gap-1 p-1 rounded-xl w-fit"
+              style={{ background: '#0D1526', border: '1px solid #1A2840' }}>
+              {[
+                { id: 'total',      label: 'Vue consolidée', hint: 'Tous imports cumulés' },
+                { id: 'bizouk',     label: 'Bizouk',         hint: 'Données Bizouk uniquement' },
+                { id: 'weezevent',  label: 'Weezevent',      hint: 'Données Weezevent uniquement' },
+              ].map(s => (
+                <button key={s.id} onClick={() => setLiveSource(s.id)}
+                  title={s.hint}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={liveSource === s.id
+                    ? { background: 'rgba(245,158,11,0.15)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.3)' }
+                    : { color: '#8B9BB4', border: '1px solid transparent' }}>
+                  {s.label}
+                </button>
+              ))}
             </div>
           )}
 
-          {/* Header de contexte */}
-          {channels.length > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
-              style={{ background: 'rgba(6,142,234,0.05)', border: '1px solid rgba(6,142,234,0.1)' }}>
-              <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#10B981' }} />
-              <p className="text-xs" style={{ color: '#8B9BB4' }}>
-                {channelTab === 'total'
-                  ? <><span className="text-white font-semibold">Vue consolidée</span> — tous canaux cumulés</>
-                  : <><span className="text-white font-semibold">{activeChannel?.name ?? channelTab}</span> — données de ce canal uniquement</>
-                }
-              </p>
-            </div>
+          {/* Vue consolidée (total) */}
+          {(IS_DEMO || liveSource === 'total') && (<>
+            {/* Switch canaux — mémorisé */}
+            {channels.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-xs font-semibold uppercase tracking-wider mr-1" style={{ color: '#4A5568' }}>Canal :</p>
+                <button onClick={() => switchChannelTab('total')}
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold transition"
+                  style={{
+                    background: channelTab === 'total' ? 'rgba(6,142,234,0.15)' : 'rgba(255,255,255,0.03)',
+                    border: `1px solid ${channelTab === 'total' ? 'rgba(6,142,234,0.35)' : '#1A2840'}`,
+                    color: channelTab === 'total' ? '#21AAFA' : '#8B9BB4',
+                  }}>Tous canaux</button>
+                {channels.map(ch => {
+                  const active = channelTab === ch.id
+                  return (
+                    <button key={ch.id} onClick={() => switchChannelTab(ch.id)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition"
+                      style={{
+                        background: active ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)',
+                        border: `1px solid ${active ? '#6366F1' : '#1A2840'}`,
+                        color: active ? '#A5B4FC' : '#8B9BB4',
+                      }}>
+                      <span className="text-sm leading-none">{ch.icon ?? '📋'}</span>
+                      {ch.name}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            <BilletterieTracking channelFilter={channelTab === 'total' ? null : channelTab} />
+          </>)}
+
+          {/* Sous-onglet Bizouk */}
+          {!IS_DEMO && liveSource === 'bizouk' && (
+            <LiveSourceView editionId={activeEdition?.id} source="bizouk" sourceLabel="Bizouk" />
           )}
 
-          {/* Dashboard — total ou canal spécifique
-              Pas de key= pour ne pas détruire/recréer le composant au switch de canal.
-              Les dashboards existants restent visibles ; l'état sauvegardé se recharge silencieusement. */}
-          <BilletterieTracking
-            channelFilter={channelTab === 'total' ? null : channelTab}
-          />
+          {/* Sous-onglet Weezevent */}
+          {!IS_DEMO && liveSource === 'weezevent' && (
+            <LiveSourceView editionId={activeEdition?.id} source="weezevent" sourceLabel="Weezevent" />
+          )}
         </div>
       )}
 
@@ -212,11 +346,8 @@ export default function Billetterie() {
             }
           </div>
 
-          {/* KPI */}
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-            <KpiCard label="Participants (billets)"
-              value={IS_DEMO ? (af ? fmt.number(af.total) : b?.scans ? fmt.number(b.scans) : '—') : (liveBillet?.nb_participants ? fmt.number(liveBillet.nb_participants) : '—')}
-              sub={IS_DEMO ? 'Entrées' : 'Total billets importés'} delta={null} accent="blue" icon={Users} />
+          {/* KPIs — sans participants simple en production */}
+          <div className={`grid gap-4 ${IS_DEMO ? 'grid-cols-2 xl:grid-cols-4' : 'grid-cols-2 xl:grid-cols-3'}`}>
             <KpiCard label="CA Billetterie (net)"
               value={IS_DEMO ? (b?.ca_billet ? fmt.currency(b.ca_billet) : '—') : (liveBillet?.ca_total ? fmt.currency(liveBillet.ca_total) : '—')}
               sub={IS_DEMO ? 'Toutes formules' : 'Hors commission plateforme'} delta={null} accent="gold" icon={Euro} />
@@ -224,38 +355,53 @@ export default function Billetterie() {
               value={IS_DEMO ? (IS_DEMO && year === 2025 ? fmt.number(totalTickets2025) : b?.familles_tarifaires?.[0]?.nb ? fmt.number(b.familles_tarifaires[0].nb) : '—') : (liveBillet?.nb_commandes ? fmt.number(liveBillet.nb_commandes) : '—')}
               sub={IS_DEMO && year === 2025 ? '31% invitations' : 'Importées'}
               delta={null} accent="teal" icon={Ticket} />
-            <KpiCard label="CSE / partenaires"
-              value={IS_DEMO && year === 2025 ? fmt.number(2704) : '—'}
-              sub={IS_DEMO && year === 2025 ? fmt.currency(236928) : `Voir données ${year}`}
-              delta={null} accent="violet" icon={Gift} />
+            {IS_DEMO && (
+              <KpiCard label="Participants"
+                value={af ? fmt.number(af.total) : b?.scans ? fmt.number(b.scans) : '—'}
+                sub="Entrées scannées" delta={null} accent="blue" icon={Users} />
+            )}
+            {IS_DEMO && (
+              <KpiCard label="CSE / partenaires"
+                value={IS_DEMO && year === 2025 ? fmt.number(2704) : '—'}
+                sub={IS_DEMO && year === 2025 ? fmt.currency(236928) : `Voir données ${year}`}
+                delta={null} accent="violet" icon={Gift} />
+            )}
           </div>
 
-          {/* Breakdown participants par groupe de tarif */}
+          {/* Production : Répartition participants par groupe de tarif (principal) */}
           {!IS_DEMO && liveBillet?.participants_by_tarif?.length > 0 && (
-            <SectionCard
-              title="Participants par groupe de tarif"
-              subtitle={`${fmt.number(liveBillet.nb_participants)} billets au total`}>
-              <div className="space-y-2 mt-1">
+            <div className="p-4 rounded-2xl" style={{ background: '#0D1526', border: '1px solid #1A2840' }}>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-sm font-bold text-white">Participants par groupe de tarif</p>
+                  <p className="text-xs text-[#8B9BB4] mt-0.5">Total Bizouk + Weezevent consolidés</p>
+                </div>
+                <span className="num text-sm font-bold px-3 py-1.5 rounded-full"
+                  style={{ background: 'rgba(6,142,234,0.15)', color: '#21AAFA', border: '1px solid rgba(6,142,234,0.2)' }}>
+                  {fmt.number(liveBillet.nb_participants)} billets
+                </span>
+              </div>
+              <div className="space-y-3">
                 {liveBillet.participants_by_tarif.map((row, i) => {
-                  const pct = Math.round((row.nb / liveBillet.nb_participants) * 100)
+                  const pct = liveBillet.nb_participants > 0 ? Math.round((row.nb / liveBillet.nb_participants) * 100) : 0
                   const colors = ['#F59E0B', '#068EEA', '#10B981', '#6366F1', '#EF4444', '#EC4899']
                   return (
                     <div key={row.grp}>
-                      <div className="flex items-center justify-between mb-0.5">
-                        <p className="text-xs text-[#8B9BB4] truncate pr-2">{row.grp}</p>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-xs text-[#8B9BB4] truncate pr-3 flex-1">{row.grp}</p>
                         <div className="flex items-center gap-3 flex-shrink-0">
-                          <p className="num text-xs font-semibold text-white">{fmt.number(row.nb)}</p>
-                          <p className="num text-2xs text-[#4A5568] w-9 text-right">{pct}%</p>
+                          <p className="num text-sm font-bold text-white">{fmt.number(row.nb)}</p>
+                          <p className="num text-xs text-[#4A5568] w-9 text-right">{pct}%</p>
                         </div>
                       </div>
-                      <div className="h-1.5 rounded-full" style={{ background: '#1A2840' }}>
+                      <div className="h-2 rounded-full" style={{ background: '#1A2840' }}>
                         <div className="h-full rounded-full" style={{ width: `${pct}%`, background: colors[i % colors.length] }} />
                       </div>
                     </div>
                   )
                 })}
               </div>
-            </SectionCard>
+            </div>
           )}
 
           {/* Production : graphiques depuis imports ─────────────────────────── */}
