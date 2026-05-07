@@ -83,17 +83,19 @@ def _extract_ids(series) -> list:
 def _normalize(source: str, nb_cmd: int, nb_part: int, ca: Optional[float],
                nb_tarifs: int, top_tarifs: list, monthly: list,
                canaux: dict, file: str, rows: int, cols: list,
-               order_ids: list = None) -> dict:
+               order_ids: list = None,
+               participants_by_tarif: dict = None) -> dict:
     return {
-        'nb_commandes':    nb_cmd,
-        'nb_participants': nb_part,
-        'ca_total':        ca,
-        'nb_tarifs':       nb_tarifs,
-        'top_tarifs':      top_tarifs,
-        'ventes_par_mois': monthly,
-        'canaux':          canaux,
-        'order_ids':       order_ids or [],
-        'source_detected': source,
+        'nb_commandes':          nb_cmd,
+        'nb_participants':        nb_part,
+        'ca_total':               ca,
+        'nb_tarifs':              nb_tarifs,
+        'top_tarifs':             top_tarifs,
+        'ventes_par_mois':        monthly,
+        'canaux':                 canaux,
+        'order_ids':              order_ids or [],
+        'participants_by_tarif':  participants_by_tarif or {},
+        'source_detected':        source,
         'meta': {'file': file, 'rows': rows, 'columns': cols[:15]},
     }
 
@@ -186,33 +188,33 @@ def parse_weezevent(df: pd.DataFrame, filename: str) -> dict:
                     return orig
         return None
 
-    c_cmd        = find('numéro de commande', 'numero de commande', 'n° commande')
-    c_date       = find('date commande', 'date de commande')
-    c_tarif      = find('tarif') if 'groupe' not in str(find('tarif') or '').lower() else None
-    c_price      = find('montant ttc', 'montant', 'total')
-    c_canal      = find('canal', 'origine')
-    c_prenom_part = find('prénom participant', 'prenom participant', 'prénom part')
-    c_nom_part    = find('nom participant', 'nom part')
+    c_cmd          = find('numéro de commande', 'numero de commande', 'n° commande')
+    c_date         = find('date commande', 'date de commande')
+    c_tarif        = find('tarif') if 'groupe' not in str(find('tarif') or '').lower() else None
+    # "Groupe de tarif" = regroupement métier (ex : "SAMEDI 8 AOÛT — BACCHA WORLD TRIP")
+    c_groupe_tarif = find('groupe de tarif', 'groupe tarif')
+    c_price        = find('montant ttc', 'montant', 'total')
+    c_canal        = find('canal', 'origine')
 
     nb_cmd = int(df[c_cmd].nunique()) if c_cmd else int(len(df))
 
-    # Participants = individus uniques (Prénom + Nom) pour ne pas compter
-    # plusieurs fois un acheteur qui détient plusieurs billets.
-    # Fallback : commandes uniques → nombre de billets (len(df) = surcompte).
-    if c_prenom_part and c_nom_part:
-        identite = (
-            df[c_prenom_part].astype(str).str.strip().str.upper()
-            + '|' +
-            df[c_nom_part].astype(str).str.strip().str.upper()
-        )
-        # Exclure les lignes sans nom (NaN/vide)
-        nb_part = int(identite[identite.str.strip('|') != ''].nunique())
-    elif c_cmd:
-        nb_part = int(df[c_cmd].nunique())  # 1 commande = 1 acheteur
-    else:
-        nb_part = int(len(df))
+    # Participants = nombre de billets (1 ligne = 1 billet dans Weezevent)
+    # Note : "Prénom acheteur" / "Nom acheteur" = l'ACHETEUR pas le porteur.
+    # Cindy qui achète Samedi + Dimanche = 2 lignes = 2 billets = 2 participants.
+    nb_part = int(len(df))
 
     ca = _safe_sum(df[c_price]) if c_price else None
+
+    # Breakdown par groupe de tarif (ex: SAMEDI 8 AOÛT / DIMANCHE 9 AOÛT)
+    # Priorité : "Groupe de tarif" > "Tarif" (plus précis pour l'affichage par jour)
+    participants_by_tarif = {}
+    _grp_col = c_groupe_tarif or c_tarif
+    if _grp_col:
+        participants_by_tarif = {
+            str(k): int(v)
+            for k, v in df.groupby(_grp_col).size().items()
+            if str(k).strip()
+        }
 
     nb_tarifs, top = _top_tarifs(df[c_tarif]) if c_tarif else (0, [])
     monthly  = _monthly_trend(df[c_date], df) if c_date else []
@@ -228,9 +230,10 @@ def parse_weezevent(df: pd.DataFrame, filename: str) -> dict:
         'date':  c_date,
     }
     result = _normalize('weezevent', nb_cmd, nb_part, ca, nb_tarifs, top,
-                        monthly, canaux, filename, len(df), list(df.columns), ids)
+                        monthly, canaux, filename, len(df), list(df.columns), ids,
+                        participants_by_tarif=participants_by_tarif)
     result['_col_map'] = _col_map
-    result['_df_ref']  = df  # temporary reference for analyzer
+    result['_df_ref']  = df
     return result
 
 
@@ -315,11 +318,27 @@ def parse_bizouk(df: pd.DataFrame, filename: str) -> dict:
         ca = ca_brut
 
     # Tarifs / formules
-    nb_tarifs, top = _top_tarifs(df[c_tarif]) if c_tarif else (0, [])
-    monthly = _monthly_trend(df[c_date], df) if c_date else []
-    ids     = _extract_ids(df[c_cmd]) if c_cmd else []
+    nb_tarifs, top = _top_tarifs(df_comptage[c_tarif]) if c_tarif else (0, [])
+    monthly = _monthly_trend(df_comptage[c_date], df_comptage) if c_date else []
+    ids     = _extract_ids(df_comptage[c_cmd]) if c_cmd else []
 
-    # col_map for analyzer (column names in this specific DataFrame)
+    # Breakdown participants par groupe de tarif — SUM des quantités par tarif
+    # (1 ticket = 1 participant, indépendamment de l'acheteur)
+    participants_by_tarif = {}
+    if c_tarif and c_qty:
+        participants_by_tarif = {
+            str(k): int(pd.to_numeric(v, errors='coerce').fillna(1).sum())
+            for k, v in df_comptage.groupby(c_tarif)[c_qty]
+            if str(k).strip()
+        }
+    elif c_tarif:
+        participants_by_tarif = {
+            str(k): int(v)
+            for k, v in df_comptage.groupby(c_tarif).size().items()
+            if str(k).strip()
+        }
+
+    # col_map for analyzer
     _col_map = {
         'tarif': c_tarif,
         'qty':   c_qty,
@@ -328,11 +347,12 @@ def parse_bizouk(df: pd.DataFrame, filename: str) -> dict:
         'date':  c_date,
     }
     result = _normalize('bizouk', nb_cmd, nb_part, ca, nb_tarifs, top,
-                        monthly, {}, filename, len(df), list(df.columns), ids)
+                        monthly, {}, filename, len(df_comptage), list(df.columns), ids,
+                        participants_by_tarif=participants_by_tarif)
     result['_col_map']      = _col_map
-    result['_df_ref']       = df
-    result['ca_brut']       = ca_brut        # CA avant déduction commission
-    result['ca_commission'] = ca_commission  # commission Bizouk
+    result['_df_ref']       = df_comptage
+    result['ca_brut']       = ca_brut
+    result['ca_commission'] = ca_commission
     return result
 
 

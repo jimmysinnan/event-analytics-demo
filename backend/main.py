@@ -526,14 +526,21 @@ def edition_summary(edition_id: str):
 
     billet_out = None
     if has_billet:
+        # Convertir participants_by_tarif {grp: nb} → liste triée pour le frontend
+        pbt_raw = billet.get('participants_by_tarif', {})
+        pbt_list = sorted(
+            [{'grp': k, 'nb': v} for k, v in pbt_raw.items() if v > 0],
+            key=lambda x: -x['nb']
+        )
         billet_out = {
-            'nb_commandes':    billet.get('nb_commandes', 0),
-            'nb_participants': billet.get('nb_participants', 0),
-            'ca_total':        billet.get('ca_total', 0),
-            'top_tarifs':      billet.get('top_tarifs', []),
-            'ventes_par_mois': billet.get('ventes_par_mois', []),
-            'canaux':          billet.get('canaux', {}),
-            'updated_at':      billet.get('updated_at'),
+            'nb_commandes':          billet.get('nb_commandes', 0),
+            'nb_participants':        billet.get('nb_participants', 0),
+            'ca_total':               billet.get('ca_total', 0),
+            'top_tarifs':             billet.get('top_tarifs', []),
+            'ventes_par_mois':        billet.get('ventes_par_mois', []),
+            'canaux':                 billet.get('canaux', {}),
+            'participants_by_tarif':  pbt_list,
+            'updated_at':             billet.get('updated_at'),
         }
 
     conso_out = None

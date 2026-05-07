@@ -724,7 +724,7 @@ export default function BilletterieTracking({ channelFilter = null }) {
                 {fmt.number(totalParticipants)}
               </p>
               <p className="text-2xs text-[#4A5568] mt-0.5">
-                {fmt.number(activeData?.nb_participants ?? 0)} + {fmt.number(cse.vendus)} CSE
+                {fmt.number(activeData?.nb_participants ?? 0)} billets + {fmt.number(cse.vendus)} CSE
               </p>
             </div>
             <div>
@@ -751,11 +751,42 @@ export default function BilletterieTracking({ channelFilter = null }) {
         >
           <div className="space-y-4 animate-slide-up">
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-              <KpiCard label="Commandes"    value={fmt.number(data.nb_commandes)}    sub="Uniques"             delta={null} accent="teal"   icon={Ticket} />
-              <KpiCard label="Participants" value={fmt.number(data.nb_participants)} sub="Billets émis"        delta={null} accent="blue"   icon={Users}  />
-              <KpiCard label="CA"           value={data.ca_total ? fmt.currency(data.ca_total) : '—'} sub="Montant total" delta={null} accent="gold"   icon={Euro}   />
-              <KpiCard label="Formules"     value={fmt.number(data.nb_tarifs)}       sub="Tarifs distincts"    delta={null} accent="violet" icon={Target} />
+              <KpiCard label="Commandes"         value={fmt.number(data.nb_commandes)}    sub="Uniques"              delta={null} accent="teal"   icon={Ticket} />
+              <KpiCard label="Participants (billets)" value={fmt.number(data.nb_participants)} sub="1 billet = 1 participant" delta={null} accent="blue"   icon={Users}  />
+              <KpiCard label="CA (net)"          value={data.ca_total ? fmt.currency(data.ca_total) : '—'} sub="Hors commission" delta={null} accent="gold"   icon={Euro}   />
+              <KpiCard label="Formules"          value={fmt.number(data.nb_tarifs)}       sub="Tarifs distincts"     delta={null} accent="violet" icon={Target} />
             </div>
+
+            {/* Breakdown participants par groupe de tarif */}
+            {data.participants_by_tarif && Object.keys(data.participants_by_tarif).length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-[#8B9BB4] uppercase tracking-wider mb-2.5">
+                  Participants par groupe de tarif
+                </p>
+                <div className="space-y-2">
+                  {Object.entries(data.participants_by_tarif)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([grp, nb], i) => {
+                      const pct = data.nb_participants > 0 ? Math.round((nb / data.nb_participants) * 100) : 0
+                      const colors = ['#F59E0B', '#068EEA', '#10B981', '#6366F1', '#EF4444']
+                      return (
+                        <div key={grp}>
+                          <div className="flex items-center justify-between mb-0.5">
+                            <p className="text-xs text-[#8B9BB4] truncate pr-2">{grp}</p>
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              <p className="num text-xs font-semibold text-white">{fmt.number(nb)}</p>
+                              <p className="num text-2xs text-[#4A5568] w-8 text-right">{pct}%</p>
+                            </div>
+                          </div>
+                          <div className="h-1.5 rounded-full" style={{ background: '#1A2840' }}>
+                            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: colors[i % colors.length] }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                </div>
+              </div>
+            )}
 
             {/* Rythme de vente */}
             {data.ventes_par_mois?.length > 0 && (

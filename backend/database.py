@@ -167,6 +167,7 @@ def init_db():
 
     # ── Migrations safe (colonnes ajoutées après la création initiale) ──────────
     _safe_alter("""ALTER TABLE edition_analytics ADD COLUMN profil_json TEXT""")
+    _safe_alter("""ALTER TABLE billetterie_state ADD COLUMN participants_by_tarif TEXT""")
 
     # ── Seed des données historiques 2023-2025 si absentes ────────────────────
     _seed_edition_analytics()
@@ -545,6 +546,12 @@ def get_state(edition_id: str) -> dict:
                 d[key] = json.loads(d[key])
             except Exception:
                 d[key] = [] if key != 'canaux' else {}
+    # participants_by_tarif
+    raw_pbt = d.get('participants_by_tarif')
+    try:
+        d['participants_by_tarif'] = json.loads(raw_pbt) if raw_pbt else {}
+    except Exception:
+        d['participants_by_tarif'] = {}
     return d
 
 
@@ -554,6 +561,7 @@ def _empty_state(edition_id: str) -> dict:
         'nb_commandes': 0, 'nb_participants': 0, 'ca_total': 0.0,
         'top_tarifs': [], 'ventes_par_mois': [], 'canaux': {},
         'order_ids': [],
+        'participants_by_tarif': {},
     }
 
 
@@ -562,17 +570,19 @@ def _save_state(edition_id: str, state: dict):
         conn.execute("""
             INSERT OR REPLACE INTO billetterie_state
               (edition_id, nb_commandes, nb_participants, ca_total,
-               top_tarifs, ventes_par_mois, canaux, order_ids, updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?)
+               top_tarifs, ventes_par_mois, canaux, order_ids,
+               participants_by_tarif, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
         """, (
             edition_id,
             state['nb_commandes'],
             state['nb_participants'],
             state['ca_total'],
-            json.dumps(state.get('top_tarifs', []), ensure_ascii=False),
-            json.dumps(state.get('ventes_par_mois', []), ensure_ascii=False),
-            json.dumps(state.get('canaux', {}), ensure_ascii=False),
-            json.dumps(state.get('order_ids', []), ensure_ascii=False),
+            json.dumps(state.get('top_tarifs', []),           ensure_ascii=False),
+            json.dumps(state.get('ventes_par_mois', []),       ensure_ascii=False),
+            json.dumps(state.get('canaux', {}),                ensure_ascii=False),
+            json.dumps(state.get('order_ids', []),             ensure_ascii=False),
+            json.dumps(state.get('participants_by_tarif', {}), ensure_ascii=False),
             datetime.utcnow().isoformat(),
         ))
 
@@ -612,6 +622,11 @@ def _merge_state(state: dict, parsed: dict, mode: str) -> dict:
     # Fusionner canaux
     for k, v in parsed.get('canaux', {}).items():
         state['canaux'][k] = state['canaux'].get(k, 0) + v
+
+    # Fusionner participants_by_tarif (somme par groupe de tarif)
+    pbt = state.setdefault('participants_by_tarif', {})
+    for grp, nb in parsed.get('participants_by_tarif', {}).items():
+        pbt[grp] = pbt.get(grp, 0) + nb
 
     return state
 

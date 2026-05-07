@@ -214,12 +214,12 @@ export default function Billetterie() {
 
           {/* KPI */}
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-            <KpiCard label="Participants"
+            <KpiCard label="Participants (billets)"
               value={IS_DEMO ? (af ? fmt.number(af.total) : b?.scans ? fmt.number(b.scans) : '—') : (liveBillet?.nb_participants ? fmt.number(liveBillet.nb_participants) : '—')}
-              sub="Billetterie importée" delta={null} accent="blue" icon={Users} />
-            <KpiCard label="CA Billetterie"
+              sub={IS_DEMO ? 'Entrées' : 'Total billets importés'} delta={null} accent="blue" icon={Users} />
+            <KpiCard label="CA Billetterie (net)"
               value={IS_DEMO ? (b?.ca_billet ? fmt.currency(b.ca_billet) : '—') : (liveBillet?.ca_total ? fmt.currency(liveBillet.ca_total) : '—')}
-              sub="Toutes formules" delta={null} accent="gold" icon={Euro} />
+              sub={IS_DEMO ? 'Toutes formules' : 'Hors commission plateforme'} delta={null} accent="gold" icon={Euro} />
             <KpiCard label="Commandes"
               value={IS_DEMO ? (IS_DEMO && year === 2025 ? fmt.number(totalTickets2025) : b?.familles_tarifaires?.[0]?.nb ? fmt.number(b.familles_tarifaires[0].nb) : '—') : (liveBillet?.nb_commandes ? fmt.number(liveBillet.nb_commandes) : '—')}
               sub={IS_DEMO && year === 2025 ? '31% invitations' : 'Importées'}
@@ -230,10 +230,38 @@ export default function Billetterie() {
               delta={null} accent="violet" icon={Gift} />
           </div>
 
+          {/* Breakdown participants par groupe de tarif */}
+          {!IS_DEMO && liveBillet?.participants_by_tarif?.length > 0 && (
+            <SectionCard
+              title="Participants par groupe de tarif"
+              subtitle={`${fmt.number(liveBillet.nb_participants)} billets au total`}>
+              <div className="space-y-2 mt-1">
+                {liveBillet.participants_by_tarif.map((row, i) => {
+                  const pct = Math.round((row.nb / liveBillet.nb_participants) * 100)
+                  const colors = ['#F59E0B', '#068EEA', '#10B981', '#6366F1', '#EF4444', '#EC4899']
+                  return (
+                    <div key={row.grp}>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <p className="text-xs text-[#8B9BB4] truncate pr-2">{row.grp}</p>
+                        <div className="flex items-center gap-3 flex-shrink-0">
+                          <p className="num text-xs font-semibold text-white">{fmt.number(row.nb)}</p>
+                          <p className="num text-2xs text-[#4A5568] w-9 text-right">{pct}%</p>
+                        </div>
+                      </div>
+                      <div className="h-1.5 rounded-full" style={{ background: '#1A2840' }}>
+                        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: colors[i % colors.length] }} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </SectionCard>
+          )}
+
           {/* Production : graphiques depuis imports ─────────────────────────── */}
           {!IS_DEMO && liveBillet && liveBillet.top_tarifs.length > 0 && (
             <div className="grid xl:grid-cols-2 gap-4">
-              <SectionCard title="Top tarifs importés" subtitle={`${liveBillet.nb_commandes} commandes · ${liveBillet.nb_participants} participants`}>
+              <SectionCard title="Top tarifs importés" subtitle={`${liveBillet.nb_commandes} commandes · ${liveBillet.nb_participants} billets`}>
                 <div className="space-y-2">
                   {liveBillet.top_tarifs.slice(0, 8).map((t, i) => (
                     <div key={t.tarif}>
