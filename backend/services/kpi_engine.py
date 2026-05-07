@@ -1,81 +1,222 @@
 """
 Event Analytics — KPI Engine
-Calcule tous les indicateurs à partir des DataFrames chargés.
+Calcule tous les indicateurs à partir des DataFrames Weezpay.
+
+Colonnes attendues dans l'export Weezpay (BDD ou JDD Vente) :
+  Total HT              — CA hors taxes (ou Total H.T)
+  Quantité              — quantité vendue
+  Heure transaction     — heure de la transaction (entier 12-28)
+  Point de vente        — nom du PDV
+  Type de point de vente — catégorie : BAR, FOOD, MERCH, ...
+  Famille d'articles    — famille produit
+  Article               — nom article
+  ID acheteur           — identifiant client
+  ID Transaction        — identifiant transaction
 """
 import pandas as pd
 import numpy as np
 from typing import Optional
 
 
-def _num(series: pd.Series) -> pd.Series:
+def _num(series) -> pd.Series:
     return pd.to_numeric(series, errors='coerce')
 
 
-# ── Nettoyage BDD consommation ────────────────────────────────────────────────
+# ── Familles à exclure (frais techniques) ─────────────────────────────────────
 FRAIS_FAMILLES = {'Z_FRAIS BACCHA', 'Consigne', 'CONSIGNE', 'FRAIS DE RECHARGEMENT'}
 
+
+def _find(df: pd.DataFrame, *exact: str, keywords=None, exclude_kw=None) -> Optional[str]:
+    """
+    Trouve une colonne :
+    1. Par nom exact (insensible casse + strip des espaces)
+    2. Par mots-clés (tous présents dans le nom, keywords optionnels exclus)
+    """
+    col_low = {c.strip().lower(): c for c in df.columns}
+    for name in exact:
+        if name.strip().lower() in col_low:
+            return col_low[name.strip().lower()]
+    if keywords:
+        for orig_col in df.columns:
+            cl = orig_col.lower()
+            if all(k.lower() in cl for k in keywords):
+                if exclude_kw is None or not any(e.lower() in cl for e in exclude_kw):
+                    return orig_col
+    return None
+
+
+# ── Nettoyage BDD consommation ─────────────────────────────────────────────────
 def clean_conso(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    fam_col = next((c for c in df.columns if 'famille' in c.lower()), None)
+
+    # Familles — exclure frais techniques
+    fam_col = _find(df, "Famille d'articles", keywords=['famille'])
     if fam_col:
-        df = df[~df[fam_col].isin(FRAIS_FAMILLES)]
-    df['_ca_ht']  = _num(df.get('Total HT',  df.get('Total H.T ', 0)))
-    df['_ca_ttc'] = _num(df.get('Total TTC', df.get('Total TTC ', 0)))
-    df['_qty']    = _num(df.get('Quantité',  df.get('Quantité ',  1)))
+        df = df[~df[fam_col].astype(str).isin(FRAIS_FAMILLES)]
+
+    # CA HT : "Total HT" ou variantes avec espaces
+    ca_col  = _find(df, 'Total HT', 'Total H.T', 'Total H.T ', keywords=['total'], exclude_kw=['ttc', 'tva', 'ht_'])
+    df['_ca_ht'] = _num(df[ca_col]) if ca_col else pd.Series(0.0, index=df.index)
+
+    # CA TTC
+    ttc_col = _find(df, 'Total TTC', 'Total T.T.C', keywords=['total', 'ttc'])
+    df['_ca_ttc'] = _num(df[ttc_col]) if ttc_col else pd.Series(0.0, index=df.index)
+
+    # Quantité
+    qty_col = _find(df, 'Quantité', 'Quantite', 'Qté', keywords=['quantit'])
+    df['_qty'] = _num(df[qty_col]) if qty_col else pd.Series(1.0, index=df.index)
+
     return df
 
 
-# ── KPI globaux consommation ──────────────────────────────────────────────────
+# ── KPI globaux consommation ───────────────────────────────────────────────────
 def kpi_conso(df: pd.DataFrame) -> dict:
     df = clean_conso(df)
-    ca_ht     = float(df['_ca_ht'].sum())
-    n_clients = int(df['ID acheteur'].nunique()) if 'ID acheteur' in df.columns else 0
-    n_transac = int(df['ID Transaction'].nunique()) if 'ID Transaction' in df.columns else 0
-    panier    = round(ca_ht / n_clients, 2) if n_clients > 0 else 0
 
-    fam_col = next((c for c in df.columns if 'famille' in c.lower()), None)
-    top_fam = {}
+    ca_ht     = float(df['_ca_ht'].fillna(0).sum())
+    n_clients = int(df['ID acheteur'].nunique())   if 'ID acheteur'   in df.columns else 0
+    n_transac = int(df['ID Transaction'].nunique()) if 'ID Transaction' in df.columns else 0
+    panier    = round(ca_ht / n_clients, 2)         if n_clients > 0 else 0.0
+
+    # ── Familles produit : "Famille d'articles" → SUM CA HT ─────────────────
+    fam_col = _find(df, "Famille d'articles", keywords=['famille'])
+    top_familles = {}
     if fam_col:
-        top_fam = (
+        top_familles = (
             df.groupby(fam_col)['_ca_ht'].sum()
               .sort_values(ascending=False)
+              .head(12)
+              .round(2)
+              .to_dict()
+        )
+
+    # ── CA par type de PDV : "Type de point de vente" → BAR, FOOD, MERCH ────
+    type_pdv_col = _find(df, 'Type de point de vente', keywords=['type', 'point'])
+    top_pdv_type = {}
+    if type_pdv_col:
+        top_pdv_type = (
+            df.groupby(type_pdv_col)['_ca_ht'].sum()
+              .sort_values(ascending=False)
               .head(10)
               .round(2)
               .to_dict()
         )
 
-    pdv_col = next((c for c in df.columns if 'point de vente' in c.lower()), None)
-    top_pdv = {}
+    # ── CA par nom de PDV : "Point de vente" exact ───────────────────────────
+    # IMPORTANT : exclure "Type de point de vente" pour éviter la confusion
+    pdv_col = _find(df, 'Point de vente', keywords=['point de vente'], exclude_kw=['type'])
+    top_pdv_name = {}
     if pdv_col:
-        top_pdv = (
+        top_pdv_name = (
             df.groupby(pdv_col)['_ca_ht'].sum()
               .sort_values(ascending=False)
-              .head(8)
+              .head(12)
               .round(2)
               .to_dict()
         )
 
-    art_col = next((c for c in df.columns if df[c].dtype == object and c.lower() == 'article'), None)
-    top_art = {}
+    # ── Top articles : "Article" → SUM Quantité ──────────────────────────────
+    art_col = _find(df, 'Article', keywords=['article'])
+    top_articles = {}
     if art_col:
-        top_art = (
+        top_articles = (
             df.groupby(art_col)['_qty'].sum()
               .sort_values(ascending=False)
-              .head(10)
+              .head(12)
               .round(0)
               .astype(int)
               .to_dict()
         )
 
+    # ── Top articles BAR uniquement ───────────────────────────────────────────
+    top_articles_bar = {}
+    if type_pdv_col and art_col:
+        df_bar = df[df[type_pdv_col].astype(str).str.strip().str.upper() == 'BAR']
+        if not df_bar.empty:
+            top_articles_bar = (
+                df_bar.groupby(art_col)['_qty'].sum()
+                      .sort_values(ascending=False)
+                      .head(12)
+                      .round(0)
+                      .astype(int)
+                      .to_dict()
+            )
+
+    # ── Top acheteurs par CA ──────────────────────────────────────────────────
+    top_acheteurs_ca = {}
+    top_acheteurs_nb = {}
+    buyer_col = _find(df, 'ID acheteur', keywords=['acheteur'])
+    if buyer_col:
+        top_acheteurs_ca = (
+            df.groupby(buyer_col)['_ca_ht'].sum()
+              .sort_values(ascending=False)
+              .head(10)
+              .round(2)
+              .to_dict()
+        )
+        top_acheteurs_nb = (
+            df.groupby(buyer_col).size()
+              .sort_values(ascending=False)
+              .head(10)
+              .to_dict()
+        )
+
     return {
-        'ca_ht':        round(ca_ht, 2),
-        'n_clients':    n_clients,
-        'n_transac':    n_transac,
-        'panier_moyen': panier,
-        'top_familles': top_fam,
-        'top_pdv':      top_pdv,
-        'top_articles': top_art,
+        'ca_ht':             round(ca_ht, 2),
+        'n_clients':         n_clients,
+        'n_transac':         n_transac,
+        'panier_moyen':      panier,
+        'top_familles':      top_familles,
+        'top_pdv_type':      top_pdv_type,
+        'top_pdv_name':      top_pdv_name,
+        # Rétrocompat — top_pdv = top_pdv_type
+        'top_pdv':           top_pdv_type,
+        'top_articles':      top_articles,
+        'top_articles_bar':  top_articles_bar,
+        'top_acheteurs_ca':  top_acheteurs_ca,
+        'top_acheteurs_nb':  top_acheteurs_nb,
     }
+
+
+# ── CA horaire bars uniquement ────────────────────────────────────────────────
+def ca_horaire(df: pd.DataFrame) -> list[dict]:
+    """
+    CA HT par heure, filtré sur les PDV de type BAR uniquement.
+    Colonnes : 'Heure transaction' (entier) + 'Type de point de vente' = 'BAR'.
+    """
+    df = clean_conso(df)
+
+    h_col = _find(df, 'Heure transaction', keywords=['heure', 'transaction'])
+    if not h_col:
+        return []
+
+    # Filtre BAR (si la colonne type existe)
+    type_col = _find(df, 'Type de point de vente', keywords=['type', 'point'])
+    if type_col:
+        df = df[df[type_col].astype(str).str.strip().str.upper() == 'BAR'].copy()
+
+    if df.empty:
+        return []
+
+    df['_hour'] = _num(df[h_col])
+    # Plage horaire événement : 12h → 28h (4h du matin = 28 en Weezpay)
+    df = df[df['_hour'].between(12, 28)]
+
+    if df.empty:
+        return []
+
+    result = (
+        df.groupby('_hour')['_ca_ht'].sum()
+          .round(2)
+          .reset_index()
+          .rename(columns={'_hour': 'heure', '_ca_ht': 'ca_ht'})
+          .sort_values('heure')
+    )
+    # Formatage label : 15 → "15h", 25 → "1h"
+    result['label'] = result['heure'].apply(
+        lambda h: f"{int(h)}h" if h <= 24 else f"{int(h)-24}h"
+    )
+    return result.to_dict(orient='records')
 
 
 # ── KPI billetterie ───────────────────────────────────────────────────────────
@@ -88,10 +229,7 @@ def kpi_billetterie(df_participants: pd.DataFrame, df_realise: Optional[pd.DataF
             sessions = df_participants['Session'].value_counts().to_dict()
             result['scans_par_session'] = {str(k): int(v) for k, v in sessions.items()}
         if 'Tarif' in df_participants.columns:
-            result['top_tarifs'] = (
-                df_participants['Tarif'].value_counts()
-                .head(10).to_dict()
-            )
+            result['top_tarifs'] = df_participants['Tarif'].value_counts().head(10).to_dict()
             invit = df_participants[
                 df_participants['Tarif'].str.contains('INVITATION|Invitation', na=False, case=False)
             ]
@@ -99,7 +237,6 @@ def kpi_billetterie(df_participants: pd.DataFrame, df_realise: Optional[pd.DataF
             result['pct_invitations'] = round(len(invit) / len(df_participants) * 100, 1) if len(df_participants) > 0 else 0
 
     if df_realise is not None and not df_realise.empty:
-        # Cherche les colonnes CA et nb tickets
         ca_col  = next((c for c in df_realise.columns if 'ca' in c.lower() or 'réalis' in c.lower()), None)
         nbt_col = next((c for c in df_realise.columns if 'ticket' in c.lower() or 'nombre' in c.lower()), None)
         if ca_col:
@@ -110,30 +247,12 @@ def kpi_billetterie(df_participants: pd.DataFrame, df_realise: Optional[pd.DataF
     return result
 
 
-# ── Évolution CA horaire ──────────────────────────────────────────────────────
-def ca_horaire(df: pd.DataFrame) -> list[dict]:
-    df = clean_conso(df)
-    h_col = next((c for c in df.columns if 'heure' in c.lower() and 'transaction' in c.lower()), None)
-    if not h_col:
-        return []
-    df['_hour'] = _num(df[h_col])
-    result = (
-        df[df['_hour'].between(12, 4 + 24)]
-        .groupby('_hour')['_ca_ht'].sum()
-        .round(2)
-        .reset_index()
-        .rename(columns={'_hour': 'heure', '_ca_ht': 'ca_ht'})
-        .sort_values('heure')
-    )
-    return result.to_dict(orient='records')
-
-
-# ── Profil client ─────────────────────────────────────────────────────────────
+# ── Profil client ──────────────────────────────────────────────────────────────
 def profil_client(df: pd.DataFrame) -> dict:
     df = clean_conso(df)
     result = {}
     if "Tranche d'âge" in df.columns:
-        result['age'] = df.groupby("Tranche d'âge")['_ca_ht'].agg(['sum','count']).round(2).to_dict()
+        result['age'] = df.groupby("Tranche d'âge")['_ca_ht'].agg(['sum', 'count']).round(2).to_dict()
     if 'Genre' in df.columns:
         g = df['Genre'].value_counts()
         result['genre'] = {str(k): int(v) for k, v in g.items() if str(k).strip()}

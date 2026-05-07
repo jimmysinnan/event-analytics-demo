@@ -539,21 +539,28 @@ def edition_summary(edition_id: str):
     conso_out = None
     if has_conso:
         kpi = conso.get('kpi', {})
-        # top_familles et top_pdv peuvent être des dict → convertir en list triée
-        top_fam_raw = kpi.get('top_familles') or {}
-        top_pdv_raw = kpi.get('top_pdv') or {}
-        top_art_raw = kpi.get('top_articles') or {}
+
+        def _dict_to_list(d, k1, k2):
+            """Convertit {nom: valeur} → [{k1: nom, k2: valeur}] trié desc."""
+            if not d:
+                return []
+            return [{k1: k, k2: v} for k, v in sorted(d.items(), key=lambda x: -x[1])]
+
         conso_out = {
-            'ca_ht':        kpi.get('ca_ht'),
-            'n_clients':    kpi.get('n_clients'),
-            'n_transac':    kpi.get('n_transac'),
-            'panier_moyen': kpi.get('panier_moyen'),
-            'top_familles': [{'name': k, 'ca': v}  for k, v in sorted(top_fam_raw.items(), key=lambda x: -x[1])],
-            'top_pdv':      [{'pdv': k,  'ca': v}  for k, v in sorted(top_pdv_raw.items(), key=lambda x: -x[1])],
-            'top_articles': [{'art': k,  'qty': v} for k, v in sorted(top_art_raw.items(), key=lambda x: -x[1])],
-            'ca_horaire':   conso.get('ca_horaire', []),
-            'filename':     conso.get('filename', ''),
-            'updated_at':   conso.get('updated_at'),
+            'ca_ht':             kpi.get('ca_ht'),
+            'n_clients':         kpi.get('n_clients'),
+            'n_transac':         kpi.get('n_transac'),
+            'panier_moyen':      kpi.get('panier_moyen'),
+            'top_familles':      _dict_to_list(kpi.get('top_familles'),    'name', 'ca'),
+            'top_pdv_type':      _dict_to_list(kpi.get('top_pdv_type'),    'type', 'ca'),
+            'top_pdv_name':      _dict_to_list(kpi.get('top_pdv_name'),    'pdv',  'ca'),
+            'top_articles':      _dict_to_list(kpi.get('top_articles'),    'art',  'qty'),
+            'top_articles_bar':  _dict_to_list(kpi.get('top_articles_bar'),'art',  'qty'),
+            'top_acheteurs_ca':  _dict_to_list(kpi.get('top_acheteurs_ca'),'id',   'ca'),
+            'top_acheteurs_nb':  _dict_to_list(kpi.get('top_acheteurs_nb'),'id',   'nb'),
+            'ca_horaire':        conso.get('ca_horaire', []),
+            'filename':          conso.get('filename', ''),
+            'updated_at':        conso.get('updated_at'),
         }
 
     return JSONResponse(content=jsonify({
