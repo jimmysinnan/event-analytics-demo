@@ -70,8 +70,9 @@ export default function Billetterie() {
   const totalCA2025      = REALISE_2025.reduce((s, r) => s + r.ca,      0)
 
   // Production : données réelles depuis l'API
-  const [liveBillet, setLiveBillet]   = useState(null)
-  const [liveLoading, setLiveLoading] = useState(false)
+  const [liveBillet,    setLiveBillet]    = useState(null)
+  const [liveLoading,   setLiveLoading]   = useState(false)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
 
   useEffect(() => {
     if (activeEdition?.id) {
@@ -79,6 +80,7 @@ export default function Billetterie() {
     }
   }, [activeEdition?.id])
 
+  // Re-fetch quand : édition change, refresh demandé, ou passage sur l'onglet Analyse
   useEffect(() => {
     if (IS_DEMO || !activeEdition?.id) { setLiveBillet(null); return }
     setLiveLoading(true)
@@ -87,7 +89,7 @@ export default function Billetterie() {
       .then(d => setLiveBillet(d?.billetterie ?? null))
       .catch(() => setLiveBillet(null))
       .finally(() => setLiveLoading(false))
-  }, [activeEdition?.id])
+  }, [activeEdition?.id, refreshTrigger, tab])
 
   function switchChannelTab(id) {
     setChannelTab(id)
@@ -195,7 +197,19 @@ export default function Billetterie() {
                 {!IS_DEMO && !liveBillet && !liveLoading ? ' — Aucun import billetterie' : ''}
               </p>
             </div>
-            {liveLoading && <RefreshCw size={12} className="animate-spin text-[#4A5568]" />}
+            {liveLoading
+              ? <RefreshCw size={12} className="animate-spin text-[#4A5568]" />
+              : !IS_DEMO && (
+                <button
+                  onClick={() => setRefreshTrigger(t => t + 1)}
+                  title="Actualiser les données"
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition hover:bg-[#1A2840]"
+                  style={{ color: '#8B9BB4' }}>
+                  <RefreshCw size={11} strokeWidth={2} />
+                  Actualiser
+                </button>
+              )
+            }
           </div>
 
           {/* KPI */}

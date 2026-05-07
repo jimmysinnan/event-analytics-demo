@@ -252,35 +252,49 @@ def parse_bizouk(df: pd.DataFrame, filename: str) -> dict:
     c_qty        = find('quantit', 'qty', 'nombre')
     c_statut     = find('statut de la commande', 'statut', 'status')
 
-    # Stratégie statut : liste noire (exclure annulés/remboursés)
-    # → inclut les commandes en attente, en cours, validées, etc.
-    # → correspond au comportement du dashboard Bizouk
+    # ── Deux filtres statut séparés ───────────────────────────────────────────
+    # Participants : liste noire (tout sauf annulé/remboursé) → correspond au
+    #               dashboard Bizouk qui inclut "En attente", "En cours", etc.
+    # CA          : liste blanche (seulement validé/payé) → correspond à la
+    #               "Recette" Bizouk qui ne compte que les ventes encaissées
+
     if c_statut is not None:
-        invalides = df[c_statut].astype(str).str.lower().str.contains(
-            r'annul|cancel|remboursé|remboursee|refund|rembours', regex=True, na=False
-        )
-        df = df[~invalides].copy()
+        st = df[c_statut].astype(str).str.lower()
+        # Liste noire pour participants
+        invalides   = st.str.contains(r'annul|cancel|remboursé|remboursee|refund', regex=True, na=False)
+        df_comptage = df[~invalides].copy()
+        # Liste blanche pour CA (seulement les ordres réellement payés)
+        valides_ca  = st.str.contains(r'valid|paid|confirm|success|complet|versé', regex=True, na=False)
+        df_ca       = df[valides_ca].copy()
+    else:
+        df_comptage = df.copy()
+        df_ca       = df.copy()
 
-    # Commandes uniques
-    nb_cmd = int(df[c_cmd].nunique()) if c_cmd else int(len(df))
-
-    # Participants = somme des quantités
+    # Commandes et participants (filtre inclusif)
+    nb_cmd = int(df_comptage[c_cmd].nunique()) if c_cmd else int(len(df_comptage))
     if c_qty is not None:
-        qty_num = pd.to_numeric(df[c_qty], errors='coerce').fillna(1)
+        qty_num = pd.to_numeric(df_comptage[c_qty], errors='coerce').fillna(1)
         nb_part = int(qty_num.sum())
     else:
-        nb_part = int(len(df))
+        nb_part = int(len(df_comptage))
 
-    # CA brut = somme des montants de ligne
-    ca_brut       = _safe_sum(df[c_price])      if c_price      else None
-    # Commission = somme des commissions Bizouk
-    ca_commission = _safe_sum(df[c_commission]) if c_commission else None
+    # CA brut = somme des montants de LIGNE pour les ordres payés
+    ca_brut = _safe_sum(df_ca[c_price]) if c_price else None
 
-    # CA net = ce que Bizouk reverse à l'organisateur (= brut - commission)
+    # Commission Bizouk — ATTENTION : c'est un montant par COMMANDE dupliqué
+    # sur chaque ligne de la commande. On déduplique par commande avant de sommer.
+    ca_commission = None
+    if c_commission and c_cmd:
+        df_ca_dedup  = df_ca.drop_duplicates(subset=[c_cmd])
+        ca_commission = _safe_sum(df_ca_dedup[c_commission])
+    elif c_commission:
+        ca_commission = _safe_sum(df_ca[c_commission])
+
+    # CA net = Brut - Commission (= recette reversée à l'organisateur)
     if ca_brut is not None and ca_commission is not None:
         ca = round(ca_brut - ca_commission, 2)
     else:
-        ca = ca_brut   # fallback : pas de colonne commission → garder brut
+        ca = ca_brut
 
     # Tarifs / formules
     nb_tarifs, top = _top_tarifs(df[c_tarif]) if c_tarif else (0, [])
