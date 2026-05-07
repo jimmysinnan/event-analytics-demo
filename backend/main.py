@@ -551,13 +551,18 @@ def edition_summary(edition_id: str):
             'n_clients':         kpi.get('n_clients'),
             'n_transac':         kpi.get('n_transac'),
             'panier_moyen':      kpi.get('panier_moyen'),
+            # Dicts → lists triées
             'top_familles':      _dict_to_list(kpi.get('top_familles'),    'name', 'ca'),
             'top_pdv_type':      _dict_to_list(kpi.get('top_pdv_type'),    'type', 'ca'),
             'top_pdv_name':      _dict_to_list(kpi.get('top_pdv_name'),    'pdv',  'ca'),
             'top_articles':      _dict_to_list(kpi.get('top_articles'),    'art',  'qty'),
             'top_articles_bar':  _dict_to_list(kpi.get('top_articles_bar'),'art',  'qty'),
-            'top_acheteurs_ca':  _dict_to_list(kpi.get('top_acheteurs_ca'),'id',   'ca'),
-            'top_acheteurs_nb':  _dict_to_list(kpi.get('top_acheteurs_nb'),'id',   'nb'),
+            # top_acheteurs : déjà des lists [{id,nom,prenom,ca/nb}]
+            'top_acheteurs_ca':  kpi.get('top_acheteurs_ca', []),
+            'top_acheteurs_nb':  kpi.get('top_acheteurs_nb', []),
+            # Horaire par PDV (pour filtre dropdown)
+            'ca_horaire_by_pdv': kpi.get('ca_horaire_by_pdv', {}),
+            'bar_pdv_names':     kpi.get('bar_pdv_names', []),
             'ca_horaire':        conso.get('ca_horaire', []),
             'filename':          conso.get('filename', ''),
             'updated_at':        conso.get('updated_at'),

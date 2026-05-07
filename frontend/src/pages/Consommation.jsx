@@ -151,11 +151,94 @@ function ConsoUpload({ editionId, onSuccess }) {
   )
 }
 
+// ── Filtre article (recherche dans la liste) ───────────────────────────────────
+function ArticleFilter({ articles, selected, onChange }) {
+  if (!articles?.length) return null
+  return (
+    <div className="flex items-center gap-2 mb-3">
+      <label className="text-xs font-semibold uppercase tracking-wider flex-shrink-0"
+        style={{ color: '#4A5568', fontSize: '0.6rem' }}>Article</label>
+      <select
+        className="flex-1 px-2.5 py-1.5 rounded-lg text-xs text-white outline-none"
+        style={{ background: '#080E1E', border: '1px solid #1A2840', colorScheme: 'dark' }}
+        value={selected}
+        onChange={e => onChange(e.target.value)}
+      >
+        <option value="">Tous les articles</option>
+        {articles.map(a => (
+          <option key={a.art} value={a.art}>{a.art} ({fmt.number(a.qty)})</option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+// ── Filtre PDV horaire (bars uniquement) ──────────────────────────────────────
+function PdvFilter({ names, selected, onChange }) {
+  if (!names?.length) return null
+  return (
+    <div className="flex items-center gap-2 mb-3">
+      <label className="text-xs font-semibold uppercase tracking-wider flex-shrink-0"
+        style={{ color: '#4A5568', fontSize: '0.6rem' }}>PDV</label>
+      <select
+        className="flex-1 px-2.5 py-1.5 rounded-lg text-xs text-white outline-none"
+        style={{ background: '#080E1E', border: '1px solid #1A2840', colorScheme: 'dark' }}
+        value={selected}
+        onChange={e => onChange(e.target.value)}
+      >
+        <option value="">Total tous bars</option>
+        {names.map(n => <option key={n} value={n}>{n}</option>)}
+      </select>
+    </div>
+  )
+}
+
+// ── Tableau acheteurs ──────────────────────────────────────────────────────────
+function AcheteurTable({ rows, valueKey, valueLabel, valueFmt }) {
+  if (!rows?.length) return <NoDataSmall detail="Données acheteurs non disponibles (colonne 'ID acheteur' absente)." />
+  const hasNom    = rows.some(r => r.nom)
+  const hasPrenom = rows.some(r => r.prenom)
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ borderBottom: '1px solid #1A2840' }}>
+            <th className="text-left py-1.5 pr-3 font-semibold uppercase tracking-wider"
+              style={{ color: '#4A5568', fontSize: '0.6rem', width: '1.5rem' }}>#</th>
+            {hasNom    && <th className="text-left py-1.5 pr-3 font-semibold uppercase tracking-wider" style={{ color: '#4A5568', fontSize: '0.6rem' }}>Nom</th>}
+            {hasPrenom && <th className="text-left py-1.5 pr-3 font-semibold uppercase tracking-wider" style={{ color: '#4A5568', fontSize: '0.6rem' }}>Prénom</th>}
+            <th className="text-left py-1.5 pr-3 font-semibold uppercase tracking-wider"
+              style={{ color: '#4A5568', fontSize: '0.6rem' }}>ID</th>
+            <th className="text-right py-1.5 font-semibold uppercase tracking-wider"
+              style={{ color: '#4A5568', fontSize: '0.6rem' }}>{valueLabel}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={r.id + i} style={{ borderBottom: '1px solid #0D1526' }}
+              className="hover:bg-[#0D1526] transition-colors">
+              <td className="py-1.5 pr-3 num font-bold" style={{ color: '#4A5568' }}>{i + 1}</td>
+              {hasNom    && <td className="py-1.5 pr-3 text-[#8B9BB4] truncate max-w-[80px]">{r.nom  || '—'}</td>}
+              {hasPrenom && <td className="py-1.5 pr-3 text-[#8B9BB4] truncate max-w-[80px]">{r.prenom || '—'}</td>}
+              <td className="py-1.5 pr-3 font-mono text-[#4A5568] truncate max-w-[80px]" title={r.id}>{r.id.slice(0, 10)}</td>
+              <td className="py-1.5 num text-right font-semibold text-white">{valueFmt(r[valueKey])}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 // ── Page principale ────────────────────────────────────────────────────────────
 export default function Consommation() {
   const { year, activeEdition } = useEdition()
   const [tab,          setTab]          = useState('analyse')
   const [uploadTrigger, setUploadTrigger] = useState(0)
+
+  // Filtres
+  const [filterArticle,    setFilterArticle]    = useState('')
+  const [filterPdvHoraire, setFilterPdvHoraire] = useState('')
 
   // Demo data
   const d    = IS_DEMO ? CONSO[year]     : null
@@ -297,29 +380,42 @@ export default function Consommation() {
 
               <SectionCard title={`Top articles — volume ${year}`}
                 subtitle="SUM quantité par article">
-                {liveKpi.top_articles.length > 0 ? (
-                  <div className="space-y-2 mt-1">
-                    {liveKpi.top_articles.slice(0, 10).map((a, i) => (
-                      <div key={a.art}>
-                        <div className="flex items-center gap-2.5">
-                          <span className="num text-2xs font-bold w-4 text-[#4A5568] flex-shrink-0">{i + 1}</span>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex justify-between mb-0.5">
-                              <p className="text-xs text-[#8B9BB4] truncate pr-2">{a.art}</p>
-                              <p className="num text-xs font-semibold text-white flex-shrink-0">{fmt.number(a.qty)}</p>
-                            </div>
-                            <div className="h-1.5 rounded-full" style={{ background: '#1A2840' }}>
-                              <div className="h-full rounded-full" style={{
-                                width: `${(a.qty / liveKpi.top_articles[0].qty) * 100}%`,
-                                background: i === 0 ? '#F59E0B' : i < 3 ? '#068EEA' : '#2A3850'
-                              }} />
+                {liveKpi.top_articles.length > 0 ? (() => {
+                  const filtered = filterArticle
+                    ? liveKpi.top_articles.filter(a => a.art === filterArticle)
+                    : liveKpi.top_articles.slice(0, 15)
+                  const maxQty = liveKpi.top_articles[0]?.qty || 1
+                  return (
+                    <>
+                      <ArticleFilter
+                        articles={liveKpi.top_articles}
+                        selected={filterArticle}
+                        onChange={setFilterArticle}
+                      />
+                      <div className="space-y-2">
+                        {filtered.map((a, i) => (
+                          <div key={a.art} className="flex items-center gap-2.5">
+                            <span className="num text-2xs font-bold w-4 text-[#4A5568] flex-shrink-0">
+                              {filterArticle ? '—' : i + 1}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex justify-between mb-0.5">
+                                <p className="text-xs text-[#8B9BB4] truncate pr-2">{a.art}</p>
+                                <p className="num text-xs font-semibold text-white flex-shrink-0">{fmt.number(a.qty)}</p>
+                              </div>
+                              <div className="h-1.5 rounded-full" style={{ background: '#1A2840' }}>
+                                <div className="h-full rounded-full" style={{
+                                  width: `${(a.qty / maxQty) * 100}%`,
+                                  background: i === 0 && !filterArticle ? '#F59E0B' : '#068EEA'
+                                }} />
+                              </div>
                             </div>
                           </div>
-                        </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                ) : <NoDataSmall detail="Colonne 'Article' absente dans ce fichier." />}
+                    </>
+                  )
+                })() : <NoDataSmall detail="Colonne 'Article' absente dans ce fichier." />}
               </SectionCard>
             </div>
 
@@ -499,28 +595,44 @@ export default function Consommation() {
           {liveKpi && (<>
             {/* Ligne 1 : CA horaire + familles */}
             <div className="grid xl:grid-cols-2 gap-4">
-              <SectionCard title="CA horaire — bars"
-                subtitle={livePic ? `Pic à ${livePic.label} · ${fmt.currency(livePic.ca_ht)}` : 'Par heure'}>
-                {liveKpi.ca_horaire.length > 1 ? (
-                  <ResponsiveContainer width="100%" height={200}>
-                    <AreaChart data={liveKpi.ca_horaire}>
-                      <defs>
-                        <linearGradient id="gradHL" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%"  stopColor="#F59E0B" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="#F59E0B" stopOpacity={0}   />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid stroke="#1A2840" strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="label" tick={{ fill: '#8B9BB4', fontSize: 10 }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fill: '#8B9BB4', fontSize: 10 }} axisLine={false} tickLine={false}
-                        tickFormatter={v => `${(v/1000).toFixed(0)}k`} width={32} />
-                      <Tooltip content={<Tip />} />
-                      <Area type="monotone" dataKey="ca_ht" name="CA HT" stroke="#F59E0B" strokeWidth={2}
-                        fill="url(#gradHL)" dot={false} activeDot={{ r: 4, fill: '#F59E0B' }} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                ) : <NoDataSmall detail="Données horaires non disponibles." />}
-              </SectionCard>
+              {(() => {
+                // Données horaire : total BAR ou PDV spécifique
+                const horaireData = filterPdvHoraire && liveKpi.ca_horaire_by_pdv?.[filterPdvHoraire]
+                  ? liveKpi.ca_horaire_by_pdv[filterPdvHoraire]
+                  : liveKpi.ca_horaire
+                const pic = horaireData?.length
+                  ? horaireData.reduce((a, b) => b.ca_ht > a.ca_ht ? b : a)
+                  : null
+                return (
+                  <SectionCard title="CA horaire — bars"
+                    subtitle={pic ? `Pic à ${pic.label} · ${fmt.currency(pic.ca_ht)}` : 'Par heure'}>
+                    <PdvFilter
+                      names={liveKpi.bar_pdv_names ?? []}
+                      selected={filterPdvHoraire}
+                      onChange={setFilterPdvHoraire}
+                    />
+                    {horaireData?.length > 1 ? (
+                      <ResponsiveContainer width="100%" height={200}>
+                        <AreaChart data={horaireData}>
+                          <defs>
+                            <linearGradient id="gradHL" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%"  stopColor="#F59E0B" stopOpacity={0.3} />
+                              <stop offset="95%" stopColor="#F59E0B" stopOpacity={0}   />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid stroke="#1A2840" strokeDasharray="3 3" vertical={false} />
+                          <XAxis dataKey="label" tick={{ fill: '#8B9BB4', fontSize: 10 }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fill: '#8B9BB4', fontSize: 10 }} axisLine={false} tickLine={false}
+                            tickFormatter={v => `${(v/1000).toFixed(0)}k`} width={32} />
+                          <Tooltip content={<Tip />} />
+                          <Area type="monotone" dataKey="ca_ht" name="CA HT" stroke="#F59E0B" strokeWidth={2}
+                            fill="url(#gradHL)" dot={false} activeDot={{ r: 4, fill: '#F59E0B' }} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    ) : <NoDataSmall detail="Données horaires non disponibles pour ce PDV." />}
+                  </SectionCard>
+                )
+              })()}
 
               <SectionCard title="CA par famille" subtitle="Suivi live">
                 {liveKpi.top_familles.length > 0 ? (
@@ -538,27 +650,42 @@ export default function Consommation() {
             {/* Ligne 2 : Top articles bar + Top articles global */}
             <div className="grid xl:grid-cols-2 gap-4">
               <SectionCard title="Top articles — bars uniquement" subtitle="SUM quantité · type BAR">
-                {liveKpi.top_articles_bar.length > 0 ? (
-                  <div className="space-y-2 mt-1">
-                    {liveKpi.top_articles_bar.slice(0, 10).map((a, i) => (
-                      <div key={a.art} className="flex items-center gap-2.5">
-                        <span className="num text-2xs font-bold w-4 text-[#4A5568] flex-shrink-0">{i + 1}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex justify-between mb-0.5">
-                            <p className="text-xs text-[#8B9BB4] truncate pr-2">{a.art}</p>
-                            <p className="num text-xs font-semibold text-white flex-shrink-0">{fmt.number(a.qty)}</p>
+                {liveKpi.top_articles_bar.length > 0 ? (() => {
+                  const filtered = filterArticle
+                    ? liveKpi.top_articles_bar.filter(a => a.art === filterArticle)
+                    : liveKpi.top_articles_bar.slice(0, 15)
+                  const maxQty = liveKpi.top_articles_bar[0]?.qty || 1
+                  return (
+                    <>
+                      <ArticleFilter
+                        articles={liveKpi.top_articles_bar}
+                        selected={filterArticle}
+                        onChange={setFilterArticle}
+                      />
+                      <div className="space-y-2">
+                        {filtered.map((a, i) => (
+                          <div key={a.art} className="flex items-center gap-2.5">
+                            <span className="num text-2xs font-bold w-4 text-[#4A5568] flex-shrink-0">
+                              {filterArticle ? '—' : i + 1}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex justify-between mb-0.5">
+                                <p className="text-xs text-[#8B9BB4] truncate pr-2">{a.art}</p>
+                                <p className="num text-xs font-semibold text-white flex-shrink-0">{fmt.number(a.qty)}</p>
+                              </div>
+                              <div className="h-1.5 rounded-full" style={{ background: '#1A2840' }}>
+                                <div className="h-full rounded-full" style={{
+                                  width: `${(a.qty / maxQty) * 100}%`,
+                                  background: i === 0 && !filterArticle ? '#F59E0B' : '#068EEA'
+                                }} />
+                              </div>
+                            </div>
                           </div>
-                          <div className="h-1.5 rounded-full" style={{ background: '#1A2840' }}>
-                            <div className="h-full rounded-full" style={{
-                              width: `${(a.qty / liveKpi.top_articles_bar[0].qty) * 100}%`,
-                              background: i === 0 ? '#F59E0B' : '#068EEA'
-                            }} />
-                          </div>
-                        </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                ) : <NoDataSmall detail="Aucun article BAR dans ce fichier." />}
+                    </>
+                  )
+                })() : <NoDataSmall detail="Aucun article BAR dans ce fichier." />}
               </SectionCard>
 
               <SectionCard title="CA par type PDV" subtitle="BAR · FOOD · MERCH">
@@ -593,38 +720,25 @@ export default function Consommation() {
               </SectionCard>
             </div>
 
-            {/* Ligne 3 : Top acheteurs */}
-            {(liveKpi.top_acheteurs_ca.length > 0 || liveKpi.top_acheteurs_nb.length > 0) && (
-              <div className="grid xl:grid-cols-2 gap-4">
-                <SectionCard title="Top 10 acheteurs — par CA" subtitle="Meilleurs acheteurs (total dépensé)">
-                  <div className="space-y-1.5 mt-1">
-                    {liveKpi.top_acheteurs_ca.slice(0, 10).map((a, i) => (
-                      <div key={a.id} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="num text-2xs font-bold w-4 text-[#4A5568]">{i + 1}</span>
-                          <p className="text-xs text-[#8B9BB4] font-mono">{String(a.id).slice(0, 12)}</p>
-                        </div>
-                        <p className="num text-xs font-semibold text-white">{fmt.currency(a.ca)}</p>
-                      </div>
-                    ))}
-                  </div>
-                </SectionCard>
-
-                <SectionCard title="Top 10 acheteurs — par fréquence" subtitle="Acheteurs avec le plus de transactions">
-                  <div className="space-y-1.5 mt-1">
-                    {liveKpi.top_acheteurs_nb.slice(0, 10).map((a, i) => (
-                      <div key={a.id} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="num text-2xs font-bold w-4 text-[#4A5568]">{i + 1}</span>
-                          <p className="text-xs text-[#8B9BB4] font-mono">{String(a.id).slice(0, 12)}</p>
-                        </div>
-                        <p className="num text-xs font-semibold text-white">{a.nb} trans.</p>
-                      </div>
-                    ))}
-                  </div>
-                </SectionCard>
-              </div>
-            )}
+            {/* Ligne 3 : Top acheteurs — tableaux avec nom + prénom */}
+            <div className="grid xl:grid-cols-2 gap-4">
+              <SectionCard title="Top 10 acheteurs — par CA" subtitle="Total CA HT dépensé">
+                <AcheteurTable
+                  rows={liveKpi.top_acheteurs_ca}
+                  valueKey="ca"
+                  valueLabel="CA HT"
+                  valueFmt={v => fmt.currency(v)}
+                />
+              </SectionCard>
+              <SectionCard title="Top 10 acheteurs — par fréquence" subtitle="Nombre de transactions">
+                <AcheteurTable
+                  rows={liveKpi.top_acheteurs_nb}
+                  valueKey="nb"
+                  valueLabel="Transactions"
+                  valueFmt={v => `${fmt.number(v)} trans.`}
+                />
+              </SectionCard>
+            </div>
           </>)}
         </div>
       )}
