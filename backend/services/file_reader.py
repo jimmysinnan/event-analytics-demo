@@ -53,7 +53,6 @@ def _read_csv(data: bytes, filename: str) -> pd.DataFrame:
                 engine='python',
                 encoding=enc,
                 on_bad_lines='skip',
-                low_memory=False,
             )
             if not df.empty:
                 return df
