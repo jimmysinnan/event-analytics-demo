@@ -142,9 +142,22 @@ def kpi_conso(df: pd.DataFrame) -> dict:
                       .to_dict()
             )
 
+    # ── Mapping nom PDV → type PDV (pour filtre croisé) ─────────────────────
+    pdv_name_col = _find(df, 'Point de vente', keywords=['point de vente'], exclude_kw=['type'])
+    pdv_name_type_map = {}
+    if pdv_name_col and type_pdv_col:
+        pdv_name_type_map = (
+            df.dropna(subset=[pdv_name_col, type_pdv_col])
+              .groupby(pdv_name_col)[type_pdv_col]
+              .first()
+              .astype(str)
+              .str.strip()
+              .str.upper()
+              .to_dict()
+        )
+
     # ── CA horaire par PDV BAR individuel (pour le filtre dropdown) ──────────
     h_col_kpi    = _find(df, 'Heure transaction', keywords=['heure', 'transaction'])
-    pdv_name_col = _find(df, 'Point de vente', keywords=['point de vente'], exclude_kw=['type'])
     ca_horaire_by_pdv = {}
     bar_pdv_names     = []
 
@@ -216,6 +229,7 @@ def kpi_conso(df: pd.DataFrame) -> dict:
         'top_articles_bar':   top_articles_bar,
         'ca_horaire_by_pdv':  ca_horaire_by_pdv,
         'bar_pdv_names':      bar_pdv_names,
+        'pdv_name_type_map':  pdv_name_type_map,
         'top_acheteurs_ca':   top_acheteurs_ca,
         'top_acheteurs_nb':   top_acheteurs_nb,
     }

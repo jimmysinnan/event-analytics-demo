@@ -561,8 +561,10 @@ def edition_summary(edition_id: str):
             'top_acheteurs_ca':  kpi.get('top_acheteurs_ca', []),
             'top_acheteurs_nb':  kpi.get('top_acheteurs_nb', []),
             # Horaire par PDV (pour filtre dropdown)
-            'ca_horaire_by_pdv': kpi.get('ca_horaire_by_pdv', {}),
-            'bar_pdv_names':     kpi.get('bar_pdv_names', []),
+            'ca_horaire_by_pdv':  kpi.get('ca_horaire_by_pdv', {}),
+            'bar_pdv_names':      kpi.get('bar_pdv_names', []),
+            # Mapping nom PDV → type PDV (pour filtres croisés)
+            'pdv_name_type_map':  kpi.get('pdv_name_type_map', {}),
             'ca_horaire':        conso.get('ca_horaire', []),
             'filename':          conso.get('filename', ''),
             'updated_at':        conso.get('updated_at'),
@@ -624,6 +626,16 @@ async def consolidate_edition(edition_id: str, request: Request):
 
     eid = upsert_edition_analytics(int(year), data)
     return JSONResponse(content=jsonify({'ok': True, 'id': eid, 'consolidated': data}))
+
+
+# ── Reset consommation ────────────────────────────────────────────────────────
+
+@app.delete("/api/conso/{edition_id}")
+def delete_conso(edition_id: str):
+    """Supprime les données conso importées pour une édition (retour arrière)."""
+    with get_db() as conn:
+        conn.execute("DELETE FROM conso_state WHERE edition_id = ?", (edition_id,))
+    return {"ok": True, "edition_id": edition_id}
 
 
 # ── Channels (canaux de distribution) ─────────────────────────────────────────
