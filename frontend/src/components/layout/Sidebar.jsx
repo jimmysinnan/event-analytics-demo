@@ -1,9 +1,10 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { useEdition } from '../../context/EditionContext'
+import { usePack } from '../../context/PackContext'
 import {
   LayoutDashboard, Ticket, ShoppingCart, Users,
   Gift, Package, BarChart3, Settings, ChevronRight,
-  BarChart2, FileText, Upload, CalendarDays
+  BarChart2, FileText, Upload, CalendarDays, Lock
 } from 'lucide-react'
 
 const NAV = [
@@ -22,6 +23,7 @@ const NAV = [
 export default function Sidebar({ collapsed, onToggle }) {
   const location = useLocation()
   const { activeEvent, activeEdition } = useEdition()
+  const { isLocked } = usePack()
   const mainNav  = NAV.filter(n => n.section === 'main')
   const toolsNav = NAV.filter(n => n.section === 'tools')
 
@@ -57,22 +59,36 @@ export default function Sidebar({ collapsed, onToggle }) {
             Pilotage
           </p>
         )}
-        {mainNav.map(({ label, icon: Icon, to }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={to === '/'}
-            className={({ isActive }) =>
-              `nav-item ${isActive ? 'nav-item-active' : ''} ${collapsed ? 'justify-center px-0' : ''}`
-            }
-          >
-            <Icon size={17} strokeWidth={1.8} className="flex-shrink-0" />
-            {!collapsed && <span className="animate-fade-in truncate">{label}</span>}
-            {!collapsed && location.pathname === to && (
-              <ChevronRight size={14} className="ml-auto text-[#21AAFA] opacity-60" />
-            )}
-          </NavLink>
-        ))}
+        {mainNav.map(({ label, icon: Icon, to }) => {
+          const locked = isLocked(to)
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              end={to === '/'}
+              className={({ isActive }) =>
+                `nav-item ${isActive ? 'nav-item-active' : ''} ${collapsed ? 'justify-center px-0' : ''} ${locked ? 'opacity-50' : ''}`
+              }
+            >
+              {locked
+                ? <Lock size={17} strokeWidth={1.8} className="flex-shrink-0 text-[#4A5568]" />
+                : <Icon size={17} strokeWidth={1.8} className="flex-shrink-0" />
+              }
+              {!collapsed && (
+                <span className="animate-fade-in truncate flex-1">{label}</span>
+              )}
+              {!collapsed && locked && (
+                <span className="ml-auto text-2xs font-semibold px-1.5 py-0.5 rounded animate-fade-in"
+                  style={{ background: 'rgba(99,102,241,0.15)', color: '#818CF8', border: '1px solid rgba(99,102,241,0.3)' }}>
+                  Premium
+                </span>
+              )}
+              {!collapsed && !locked && location.pathname === to && (
+                <ChevronRight size={14} className="ml-auto text-[#21AAFA] opacity-60" />
+              )}
+            </NavLink>
+          )
+        })}
 
         {!collapsed && (
           <p className="px-3 mt-5 mb-2 text-2xs font-semibold text-[#4A5568] uppercase tracking-widest">

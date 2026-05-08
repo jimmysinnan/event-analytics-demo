@@ -1,40 +1,50 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { EventProvider } from './context/EventContext'
-import Layout        from './components/layout/Layout'
-import VueGlobale    from './pages/VueGlobale'
-import Billetterie   from './pages/Billetterie'
-import Consommation  from './pages/Consommation'
-import ProfilClient  from './pages/ProfilClient'
-import Invitations   from './pages/Invitations'
-import Stocks        from './pages/Stocks'
-import Restitution   from './pages/Restitution'
-import Import        from './pages/Import'
-import Settings      from './pages/Settings'
-import Evenements    from './pages/Evenements'
-import AdminConsole  from './pages/AdminConsole'   // hors sidebar — accès opérateur uniquement
+import { PackProvider, usePack } from './context/PackContext'
+import Layout          from './components/layout/Layout'
+import VueGlobale      from './pages/VueGlobale'
+import Billetterie     from './pages/Billetterie'
+import Consommation    from './pages/Consommation'
+import ProfilClient    from './pages/ProfilClient'
+import Invitations     from './pages/Invitations'
+import Stocks          from './pages/Stocks'
+import Restitution     from './pages/Restitution'
+import Import          from './pages/Import'
+import Settings        from './pages/Settings'
+import Evenements      from './pages/Evenements'
+import AdminConsole    from './pages/AdminConsole'    // hors sidebar — accès opérateur uniquement
+import PremiumPreview  from './pages/PremiumPreview'
+
+/** Rend le composant cible ou PremiumPreview si le module est verrouillé */
+function GuardedRoute({ path, element }) {
+  const { isLocked } = usePack()
+  return isLocked(path) ? <PremiumPreview /> : element
+}
 
 export default function App() {
   return (
     <BrowserRouter>
       <EventProvider>
-        <Routes>
-          {/* ── Console admin opérateur — hors layout client ── */}
-          <Route path="admin" element={<AdminConsole />} />
+        <PackProvider>
+          <Routes>
+            {/* ── Console admin opérateur — hors layout client ── */}
+            <Route path="admin" element={<AdminConsole />} />
 
-          {/* ── Application client ── */}
-          <Route element={<Layout />}>
-            <Route index                   element={<VueGlobale />}   />
-            <Route path="evenements"       element={<Evenements />}   />
-            <Route path="billetterie"      element={<Billetterie />}  />
-            <Route path="consommation"     element={<Consommation />} />
-            <Route path="profil-client"    element={<ProfilClient />} />
-            <Route path="invitations"      element={<Invitations />}  />
-            <Route path="stocks"           element={<Stocks />}       />
-            <Route path="restitution"      element={<Restitution />}  />
-            <Route path="importer-donnees" element={<Import />}       />
-            <Route path="parametres"       element={<Settings />}     />
-          </Route>
-        </Routes>
+            {/* ── Application client ── */}
+            <Route element={<Layout />}>
+              <Route index                   element={<VueGlobale />}   />
+              <Route path="evenements"       element={<Evenements />}   />
+              <Route path="billetterie"      element={<Billetterie />}  />
+              <Route path="consommation"     element={<Consommation />} />
+              <Route path="profil-client"    element={<GuardedRoute path="/profil-client" element={<ProfilClient />} />} />
+              <Route path="invitations"      element={<GuardedRoute path="/invitations"   element={<Invitations />}  />} />
+              <Route path="stocks"           element={<GuardedRoute path="/stocks"        element={<Stocks />}       />} />
+              <Route path="restitution"      element={<GuardedRoute path="/restitution"   element={<Restitution />}  />} />
+              <Route path="importer-donnees" element={<Import />}       />
+              <Route path="parametres"       element={<Settings />}     />
+            </Route>
+          </Routes>
+        </PackProvider>
       </EventProvider>
     </BrowserRouter>
   )

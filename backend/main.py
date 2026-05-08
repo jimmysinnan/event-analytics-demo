@@ -282,6 +282,54 @@ async def update_client_config(request: Request):
     return JSONResponse(content=jsonify(cfg))
 
 
+@app.post("/api/quota/increment")
+async def quota_increment(request: Request):
+    """
+    Incrémente un compteur d'usage après création côté client.
+    Appelé par le frontend quand un événement ou une édition est créé(e) localement.
+    Champs acceptés : used_events | used_active_editions
+    """
+    body  = await request.json()
+    field = body.get('field', '')
+    if field not in ('used_events', 'used_active_editions'):
+        raise HTTPException(400, f"Champ inconnu : {field}")
+    increment_usage(field)
+    cfg = get_client_config() or {}
+    return JSONResponse(content={'ok': True, 'value': cfg.get(field, 0)})
+
+
+@app.get("/api/quota/check")
+def quota_check(field: str = ''):
+    """
+    Vérifie si un quota est disponible.
+    Retourne ok=True si la création est autorisée.
+    """
+    FIELD_TO_MAX = {
+        'used_events':          ('included_events',          'extensions.events_extra'),
+        'used_active_editions': ('included_active_editions', 'extensions.editions_extra'),
+        'used_ai_reports':      ('included_ai_reports',      'extensions.ai_reports_extra'),
+    }
+    if field not in FIELD_TO_MAX:
+        raise HTTPException(400, f"Champ inconnu : {field}")
+
+    db_cfg  = get_client_config()
+    plan_id = (db_cfg or {}).get('plan_type') or os.environ.get('PACK_TYPE', 'starter')
+    cfg     = build_client_config(
+        client_name = (db_cfg or {}).get('client_name', _APP_NAME),
+        client_slug = (db_cfg or {}).get('client_slug', _CLIENT_SLUG),
+        plan_type   = plan_id,
+        used_events          = (db_cfg or {}).get('used_events',          0),
+        used_active_editions = (db_cfg or {}).get('used_active_editions', 0),
+        used_ai_reports      = (db_cfg or {}).get('used_ai_reports',      0),
+    )
+    used      = cfg.get(field, 0)
+    max_key   = FIELD_TO_MAX[field][0]
+    ext_key   = FIELD_TO_MAX[field][1].split('.')[-1]   # e.g. 'events_extra'
+    max_val   = cfg.get(max_key, 0) + cfg.get('extensions', {}).get(ext_key, 0)
+    remaining = max(0, max_val - used)
+    return JSONResponse(content={'ok': remaining > 0, 'used': used, 'max': max_val, 'remaining': remaining})
+
+
 @app.get("/api/pricing/calculate")
 def pricing_calculate(participants: int = 0, pack: str = 'starter'):
     """
@@ -1113,12 +1161,35 @@ async def ai_report_stream(
     """
     Version streaming — renvoie le texte chunk par chunk (Server-Sent Events).
     Produit un effet "typing" dans le frontend.
+    Vérifie le quota IA avant de démarrer et incrémente après génération réussie.
     """
     body = {}
     try:
         body = await request.json()
     except Exception:
         pass
+
+    # ── Vérification quota rapports IA ───────────────────────────────────────
+    db_cfg  = get_client_config()
+    plan_id = (db_cfg or {}).get('plan_type') or os.environ.get('PACK_TYPE', 'starter')
+    cfg     = build_client_config(
+        client_name = (db_cfg or {}).get('client_name', _APP_NAME),
+        client_slug = (db_cfg or {}).get('client_slug', _CLIENT_SLUG),
+        plan_type   = plan_id,
+        used_ai_reports = (db_cfg or {}).get('used_ai_reports', 0),
+    )
+    used_reports = cfg.get('used_ai_reports', 0)
+    max_reports  = cfg.get('included_ai_reports', 0) + cfg.get('extensions', {}).get('ai_reports_extra', 0)
+    if used_reports >= max_reports:
+        raise HTTPException(402, detail={
+            'code':    'quota_ai_reports_exceeded',
+            'used':    used_reports,
+            'max':     max_reports,
+            'message': "Votre quota de rapports IA est atteint. Vous pouvez demander une extension de rapports ou passer à une offre supérieure.",
+        })
+
+    # Pré-incrémenter avant la génération (évite les doubles clics)
+    increment_usage('used_ai_reports')
 
     api_key        = body.get('api_key', '')
     image_b64      = body.get('image_b64') or None

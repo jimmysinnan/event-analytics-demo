@@ -5,8 +5,10 @@ import {
   BarChart2, Lock, Unlock
 } from 'lucide-react'
 import { useEventContext } from '../context/EventContext'
+import { usePack } from '../context/PackContext'
 import { createEvent, createEdition, EVENT_TYPES, RECOMMENDED_MODULES, EDITION_STATUS } from '../lib/models'
 import { API } from '../lib/api'
+import QuotaModal from '../components/ui/QuotaModal'
 
 const C = {
   bg:      '#05080F',
@@ -234,9 +236,11 @@ export default function Evenements() {
     setActiveEventId, setActiveEditionId,
     addEvent, addEdition, closeEdition, reopenEdition, refresh,
   } = useEventContext()
+  const { quotaFor, incrementQuota } = usePack()
 
   const [showNewEvent,  setShowNewEvent]  = useState(false)
   const [newEditionFor, setNewEditionFor] = useState(null)
+  const [quotaModal,    setQuotaModal]    = useState(null)  // { type, used, max }
 
   const visibleEvents = events.filter(e => !e.archived)
 
@@ -248,12 +252,26 @@ export default function Evenements() {
 
   function handleAddEvent(data) {
     addEvent(data)
+    incrementQuota('used_events')
     refresh()
   }
 
   function handleAddEdition(data) {
     addEdition(data)
+    incrementQuota('used_active_editions')
     refresh()
+  }
+
+  function tryOpenNewEvent() {
+    const q = quotaFor('events')
+    if (!q.ok) { setQuotaModal({ type: 'events', ...q }); return }
+    setShowNewEvent(true)
+  }
+
+  function tryOpenNewEdition(eventId) {
+    const q = quotaFor('editions')
+    if (!q.ok) { setQuotaModal({ type: 'editions', ...q }); return }
+    setNewEditionFor(eventId)
   }
 
   async function handleCloseEdition(e, edition) {
@@ -290,7 +308,7 @@ export default function Evenements() {
           </p>
         </div>
         <button
-          onClick={() => setShowNewEvent(true)}
+          onClick={tryOpenNewEvent}
           className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
           style={{ background: C.accent }}
         >
@@ -306,7 +324,7 @@ export default function Evenements() {
           <BarChart2 size={40} className="mb-4 opacity-30" />
           <p className="text-base font-semibold text-white mb-1">Aucun événement</p>
           <p className="text-sm mb-4" style={{ color: C.muted }}>Créez votre premier événement pour commencer.</p>
-          <button onClick={() => setShowNewEvent(true)}
+          <button onClick={tryOpenNewEvent}
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white"
             style={{ background: C.accent }}>
             <Plus size={15} /> Créer un événement
@@ -352,7 +370,7 @@ export default function Evenements() {
                   </div>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => setNewEditionFor(event.id)}
+                      onClick={() => tryOpenNewEdition(event.id)}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition hover:opacity-80"
                       style={{ border: `1px solid ${C.border}`, color: C.muted }}
                     >
@@ -364,7 +382,7 @@ export default function Evenements() {
                 {/* Éditions */}
                 {evEditions.length === 0 ? (
                   <div className="px-5 py-4 text-sm" style={{ color: C.muted }}>
-                    Aucune édition — <button className="underline" onClick={() => setNewEditionFor(event.id)}>créer la première</button>
+                    Aucune édition — <button className="underline" onClick={() => tryOpenNewEdition(event.id)}>créer la première</button>
                   </div>
                 ) : (
                   <div className="divide-y" style={{ borderColor: C.border }}>
@@ -440,7 +458,7 @@ export default function Evenements() {
       )}
 
 
-      {/* Modals */}
+      {/* Modals création */}
       {showNewEvent && (
         <NewEventModal
           onSave={handleAddEvent}
@@ -452,6 +470,16 @@ export default function Evenements() {
           eventId={newEditionFor}
           onSave={handleAddEdition}
           onClose={() => setNewEditionFor(null)}
+        />
+      )}
+
+      {/* Modal quota dépassé */}
+      {quotaModal && (
+        <QuotaModal
+          type={quotaModal.type}
+          used={quotaModal.used}
+          max={quotaModal.max}
+          onClose={() => setQuotaModal(null)}
         />
       )}
     </div>

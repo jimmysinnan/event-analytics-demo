@@ -1,7 +1,9 @@
 import { useState, useRef } from 'react'
-import { Sparkles, Copy, Check, RefreshCw, Image, X } from 'lucide-react'
+import { Sparkles, Copy, Check, RefreshCw, Image, X, Zap } from 'lucide-react'
 import { useEdition } from '../context/EditionContext'
+import { usePack } from '../context/PackContext'
 import { API } from '../lib/api'
+import QuotaModal from './ui/QuotaModal'
 
 const REPORT_TYPES = [
   {
@@ -79,16 +81,18 @@ function fileToBase64(file) {
 
 export default function AiReport({ apiKey }) {
   const { activeEdition } = useEdition()
+  const { quotaFor, refreshPack } = usePack()
   const editionId   = activeEdition?.id   ?? null
   const editionName = activeEdition?.name ?? 'Édition'
   const editionYear = activeEdition?.year ?? null
 
   const [selectedType, setSelectedType] = useState('executive')
-  const [open,    setOpen]    = useState(false)
-  const [text,    setText]    = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error,   setError]   = useState(null)
-  const [copied,  setCopied]  = useState(false)
+  const [open,        setOpen]       = useState(false)
+  const [text,        setText]       = useState('')
+  const [loading,     setLoading]    = useState(false)
+  const [error,       setError]      = useState(null)
+  const [copied,      setCopied]     = useState(false)
+  const [quotaModal,  setQuotaModal] = useState(false)
 
   // Image d'inspiration
   const [imageFile,    setImageFile]    = useState(null)  // File object
@@ -121,6 +125,11 @@ export default function AiReport({ apiKey }) {
 
   async function generate() {
     if (!editionId) return
+
+    // Vérification quota côté frontend (double-check — backend fait l'autorité)
+    const q = quotaFor('ai_reports')
+    if (!q.ok) { setQuotaModal(true); return }
+
     setLoading(true)
     setError(null)
     setText('')
@@ -135,7 +144,7 @@ export default function AiReport({ apiKey }) {
         api_key:      apiKey ?? '',
         image_b64:    imageB64    ?? null,
         image_mime:   imageMime   ?? null,
-        edition_year: editionYear ?? null,   // permet le fallback edition_analytics
+        edition_year: editionYear ?? null,
       }
 
       const res = await fetch(
@@ -147,6 +156,15 @@ export default function AiReport({ apiKey }) {
           signal:  controller.signal,
         }
       )
+
+      // Quota dépassé côté backend
+      if (res.status === 402) {
+        setLoading(false)
+        setOpen(false)
+        setQuotaModal(true)
+        refreshPack()
+        return
+      }
 
       if (!res.ok) throw new Error(`Erreur ${res.status}`)
 
@@ -166,6 +184,10 @@ export default function AiReport({ apiKey }) {
           } catch { /* ignore */ }
         }
       }
+
+      // Rafraîchir le compteur quota après génération réussie
+      refreshPack()
+
     } catch (e) {
       if (e.name !== 'AbortError') setError(e.message)
     } finally {
@@ -181,8 +203,10 @@ export default function AiReport({ apiKey }) {
   }
 
   const currentType = REPORT_TYPES.find(r => r.id === selectedType)
+  const quota = quotaFor('ai_reports')
 
   return (
+    <>
     <div className="rounded-2xl overflow-hidden" style={{ background: '#0D1526', border: '1px solid #1A2840' }}>
 
       {/* Header */}
@@ -195,6 +219,19 @@ export default function AiReport({ apiKey }) {
             style={{ background: 'rgba(99,102,241,0.15)', color: '#A5B4FC', border: '1px solid rgba(99,102,241,0.25)' }}>
             Claude Sonnet 4.6
           </span>
+          {/* Compteur quota */}
+          {quota.max < 999 && (
+            <span
+              className="text-xs px-2 py-0.5 rounded-full font-medium"
+              style={{
+                background: quota.remaining === 0 ? 'rgba(239,68,68,0.1)' : quota.remaining <= 2 ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.08)',
+                color:      quota.remaining === 0 ? '#FCA5A5'              : quota.remaining <= 2 ? '#FCD34D'              : '#6EE7B7',
+                border:     `1px solid ${quota.remaining === 0 ? 'rgba(239,68,68,0.25)' : quota.remaining <= 2 ? 'rgba(245,158,11,0.25)' : 'rgba(16,185,129,0.2)'}`,
+              }}>
+              <Zap size={9} className="inline mr-0.5" strokeWidth={2.5} />
+              {quota.used}/{quota.max} rapports
+            </span>
+          )}
         </div>
         {text && (
           <button onClick={copyText}
@@ -350,5 +387,16 @@ export default function AiReport({ apiKey }) {
 
       </div>
     </div>
+
+    {/* Modal quota dépassé */}
+    {quotaModal && (
+      <QuotaModal
+        type="ai_reports"
+        used={quota.used}
+        max={quota.max}
+        onClose={() => setQuotaModal(false)}
+      />
+    )}
+    </>
   )
 }
