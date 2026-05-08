@@ -41,6 +41,7 @@ _APP_MODE    = os.environ.get('APP_MODE',    'demo').strip().lower()
 _APP_NAME    = os.environ.get('APP_NAME',    'Event Analytics').strip()
 _CLIENT_SLUG = os.environ.get('CLIENT_SLUG', '').strip()
 _API_TOKEN   = os.environ.get('API_SECRET_TOKEN', '').strip()
+_ADMIN_KEY   = os.environ.get('ADMIN_KEY', '').strip()   # Clé console admin opérateur
 _UPLOAD_DIR  = os.environ.get('UPLOAD_DIR',  '').strip()
 _EXPORT_DIR  = os.environ.get('EXPORT_DIR',  '').strip()
 _LOG_DIR     = os.environ.get('LOG_DIR',     '').strip()
@@ -154,6 +155,72 @@ def health():
 
 
 # ── Pack & Tarification ───────────────────────────────────────────────────────
+
+def _require_admin(request: Request):
+    """Vérifie la clé admin. Lève 403 si non autorisé."""
+    if not _ADMIN_KEY:
+        raise HTTPException(403, 'ADMIN_KEY non configuré dans le .env serveur.')
+    key = request.headers.get('X-Admin-Key', '')
+    if key != _ADMIN_KEY:
+        raise HTTPException(403, 'Accès console admin refusé — clé invalide.')
+
+
+@app.post("/api/admin/auth")
+async def admin_auth(request: Request):
+    """Vérifie la clé admin et retourne un token de session."""
+    body = await request.json()
+    key  = body.get('key', '')
+    if not _ADMIN_KEY or key != _ADMIN_KEY:
+        raise HTTPException(403, 'Clé admin invalide.')
+    return JSONResponse(content={'ok': True, 'admin': True})
+
+
+@app.get("/api/admin/config")
+def admin_get_config(request: Request):
+    """Console admin — configuration client complète."""
+    _require_admin(request)
+    db_cfg  = get_client_config()
+    plan_id = (db_cfg or {}).get('plan_type') or os.environ.get('PACK_TYPE', 'starter')
+    return JSONResponse(content=jsonify(
+        build_client_config(
+            client_name = (db_cfg or {}).get('client_name', _APP_NAME),
+            client_slug = (db_cfg or {}).get('client_slug', _CLIENT_SLUG),
+            plan_type   = plan_id,
+            used_events           = (db_cfg or {}).get('used_events', 0),
+            used_active_editions  = (db_cfg or {}).get('used_active_editions', 0),
+            used_ai_reports       = (db_cfg or {}).get('used_ai_reports', 0),
+            subscription_status   = (db_cfg or {}).get('subscription_status', 'active'),
+            payment_status        = (db_cfg or {}).get('payment_status', 'paid'),
+        )
+    ))
+
+
+@app.put("/api/admin/config")
+async def admin_update_config(request: Request):
+    """Console admin — mise à jour de la configuration (activation manuelle)."""
+    _require_admin(request)
+    body = await request.json()
+    cfg  = save_client_config(body)
+    return JSONResponse(content=jsonify(cfg))
+
+
+@app.post("/api/admin/usage/reset")
+async def admin_reset_usage(request: Request):
+    """Console admin — réinitialise les compteurs d'usage."""
+    _require_admin(request)
+    body  = await request.json()
+    field = body.get('field', '')
+    if field == 'all':
+        for f in ('used_events', 'used_active_editions', 'used_ai_reports'):
+            increment_usage(f, -9999)   # remise à zéro approximative
+        save_client_config({**(get_client_config() or {}),
+                            'used_events': 0, 'used_active_editions': 0, 'used_ai_reports': 0})
+    elif field in ('used_events', 'used_active_editions', 'used_ai_reports'):
+        cfg = get_client_config() or {}
+        cfg[field] = 0
+        save_client_config(cfg)
+    return JSONResponse(content={'ok': True})
+
 
 @app.get("/api/pack")
 def get_pack_info():

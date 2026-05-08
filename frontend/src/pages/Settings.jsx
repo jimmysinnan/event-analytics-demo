@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
-  Settings2, Sparkles, Key, Monitor, Info, CheckCircle, AlertCircle,
-  Save, Package, Calculator, Lock, ChevronDown, ChevronUp, Euro, Users
+  Sparkles, Key, Monitor, Info, CheckCircle, AlertCircle,
+  Save, Lock
 } from 'lucide-react'
 import SectionCard from '../components/ui/SectionCard'
 import { useEdition } from '../context/EditionContext'
@@ -500,38 +500,22 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Pack actif */}
+      {/* Pack actif — lecture seule */}
       <SectionCard
-        title="Pack actif"
+        title="Votre pack"
         subtitle={packData ? `${packData.label} — ${packData.duration_months} mois` : 'Chargement…'}
         action={
           packData && (
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold"
               style={{ background: 'rgba(245,158,11,0.15)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.25)' }}>
-              {packData.id?.toUpperCase()}
+              {(packData.id ?? packData.plan_type ?? '').toUpperCase()}
             </span>
           )
         }
       >
-        {packData
-          ? <PackCard pack={packData} />
-          : <p className="text-xs text-[#4A5568]">Impossible de charger les informations du pack.</p>
-        }
-      </SectionCard>
-
-      {/* Calculateur de tarification */}
-      <SectionCard
-        title="Calculateur de tarification"
-        subtitle="Outil indicatif — aucun paiement déclenché. Activation manuelle par l'équipe."
-        action={
-          <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
-            style={{ background: 'rgba(16,185,129,0.08)', color: '#10B981', border: '1px solid rgba(16,185,129,0.2)' }}>
-            <Calculator size={10} />
-            Indicatif HT
-          </span>
-        }
-      >
-        <PricingCalculator />
+        {packData ? <PackCard pack={packData} /> : (
+          <p className="text-xs text-[#4A5568]">Impossible de charger les informations du pack.</p>
+        )}
       </SectionCard>
 
       {/* Connexion backend */}

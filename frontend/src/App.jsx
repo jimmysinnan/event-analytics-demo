@@ -11,23 +11,28 @@ import Restitution   from './pages/Restitution'
 import Import        from './pages/Import'
 import Settings      from './pages/Settings'
 import Evenements    from './pages/Evenements'
+import AdminConsole  from './pages/AdminConsole'   // hors sidebar — accès opérateur uniquement
 
 export default function App() {
   return (
     <BrowserRouter>
       <EventProvider>
         <Routes>
+          {/* ── Console admin opérateur — hors layout client ── */}
+          <Route path="admin" element={<AdminConsole />} />
+
+          {/* ── Application client ── */}
           <Route element={<Layout />}>
-            <Route index                element={<VueGlobale />}   />
-            <Route path="evenements"    element={<Evenements />}   />
-            <Route path="billetterie"   element={<Billetterie />}  />
-            <Route path="consommation"  element={<Consommation />} />
-            <Route path="profil-client" element={<ProfilClient />} />
-            <Route path="invitations"   element={<Invitations />}  />
-            <Route path="stocks"        element={<Stocks />}       />
-            <Route path="restitution"   element={<Restitution />}  />
-            <Route path="importer-donnees" element={<Import />}      />
-            <Route path="parametres"    element={<Settings />}     />
+            <Route index                   element={<VueGlobale />}   />
+            <Route path="evenements"       element={<Evenements />}   />
+            <Route path="billetterie"      element={<Billetterie />}  />
+            <Route path="consommation"     element={<Consommation />} />
+            <Route path="profil-client"    element={<ProfilClient />} />
+            <Route path="invitations"      element={<Invitations />}  />
+            <Route path="stocks"           element={<Stocks />}       />
+            <Route path="restitution"      element={<Restitution />}  />
+            <Route path="importer-donnees" element={<Import />}       />
+            <Route path="parametres"       element={<Settings />}     />
           </Route>
         </Routes>
       </EventProvider>
