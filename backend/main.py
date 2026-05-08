@@ -13,6 +13,10 @@ import os
 import uuid
 from datetime import datetime
 from services.kpi_engine import kpi_conso, kpi_billetterie, ca_horaire, profil_client
+from services.pricing_engine import (
+    PACKS, EXTENSIONS, get_pack, calculate_pack_price, pack_info,
+    calculate_price as calc_price_tranches,
+)
 from services.ai_reporter import generate_ai_report_stream
 from services.pdf_generator import generate_global, generate_pdv, generate_profil
 from services.import_parser import parse_import, detect_source, SOURCE_LABELS
@@ -141,6 +145,46 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "healthy"}
+
+
+# ── Pack & Tarification ───────────────────────────────────────────────────────
+
+@app.get("/api/pack")
+def get_pack_info():
+    """
+    Retourne les informations du pack actif de cette instance.
+    Pack lu depuis PACK_TYPE dans le .env client (défaut : starter).
+    """
+    pack_id = os.environ.get('PACK_TYPE', 'starter').strip().lower()
+    return JSONResponse(content=jsonify(pack_info(pack_id)))
+
+
+@app.get("/api/pricing/calculate")
+def pricing_calculate(participants: int = 0, pack: str = 'starter'):
+    """
+    Calcule le prix HT indicatif pour un pack et un nombre de participants.
+    Utilisé par le calculateur commercial — aucun paiement déclenché.
+    """
+    if participants < 0:
+        raise HTTPException(400, "Le nombre de participants doit être positif.")
+    result = calculate_pack_price(pack, participants)
+    return JSONResponse(content=jsonify(result))
+
+
+@app.get("/api/pricing/packs")
+def list_packs():
+    """Retourne la liste de tous les packs avec leurs caractéristiques."""
+    return JSONResponse(content=jsonify({
+        k: {
+            'id':           v['id'],
+            'label':        v['label'],
+            'tagline':      v['tagline'],
+            'min_price_ht': v['min_price_ht'],
+            'features':     v['features'],
+            'on_quote':     v.get('on_quote', False),
+        }
+        for k, v in PACKS.items()
+    }))
 
 
 @app.get("/api/import/formats")
