@@ -23,7 +23,7 @@ def _num(series) -> pd.Series:
 
 
 # ── Familles à exclure (frais techniques) ─────────────────────────────────────
-FRAIS_FAMILLES = {'Z_FRAIS BACCHA', 'Consigne', 'CONSIGNE', 'FRAIS DE RECHARGEMENT'}
+FRAIS_FAMILLES = {'Z_FRAIS WAY OF LIFE', 'Z_FRAIS FESTIVAL', 'Consigne', 'CONSIGNE', 'FRAIS DE RECHARGEMENT'}
 
 
 def _find(df: pd.DataFrame, *exact: str, keywords=None, exclude_kw=None) -> Optional[str]:

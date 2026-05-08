@@ -195,7 +195,7 @@ def parse_weezevent(df: pd.DataFrame, filename: str) -> dict:
     c_cmd          = find('numéro de commande', 'numero de commande', 'n° commande')
     c_date         = find('date commande', 'date de commande')
     c_tarif        = find('tarif') if 'groupe' not in str(find('tarif') or '').lower() else None
-    # "Groupe de tarif" = regroupement métier (ex : "SAMEDI 8 AOÛT — BACCHA WORLD TRIP")
+    # "Groupe de tarif" = regroupement métier (ex : "SAMEDI 23 AOÛT — WAY OF LIFE FESTIVAL")
     c_groupe_tarif = find('groupe de tarif', 'groupe tarif')
     c_price        = find('montant ttc', 'montant', 'total')
     c_canal        = find('canal', 'origine')

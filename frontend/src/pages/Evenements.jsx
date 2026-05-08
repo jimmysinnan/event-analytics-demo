@@ -76,7 +76,7 @@ function NewEditionModal({ eventId, onSave, onClose }) {
             <input
               className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none transition"
               style={{ background: '#080E1E', border: `1px solid ${C.border}` }}
-              placeholder="Ex: Festival Client 2026"
+              placeholder="Ex: Way of Life Festival 2026"
               value={form.name}
               onChange={e => set('name')(e.target.value)}
               onFocus={e => e.target.style.borderColor = C.accent}

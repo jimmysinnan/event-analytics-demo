@@ -22,42 +22,42 @@ function save(key, data) { localStorage.setItem(key, JSON.stringify(data)) }
 
 // ── Seed données de démo ───────────────────────────────────────────────────────
 function seedDemoData() {
-  const org = createOrganisation({ id: 'org-demo', name: 'ADI Events (Démo)' })
+  const org = createOrganisation({ id: 'org-demo', name: 'Way of Life Productions' })
 
   const event = createEvent({
     id:      'evt-festival-demo',
     orgId:   org.id,
-    name:    'Festival Client',
+    name:    'Way of Life Festival',
     type:    'festival',
-    description: 'Festival événementiel annuel — données de démonstration',
+    description: 'Festival lifestyle & musique — données de démonstration',
     modules: RECOMMENDED_MODULES.festival,
   })
 
   const editions = [
     createEdition({
       id: 'edi-2023', eventId: event.id,
-      name: 'Festival Client 2023', year: 2023,
+      name: 'Way of Life Festival 2023', year: 2023,
       status: 'closed',
       jaugeEst: 28000, caEst: 800000,
       modules: ['consommation'],
     }),
     createEdition({
       id: 'edi-2024', eventId: event.id,
-      name: 'Festival Client 2024', year: 2024,
+      name: 'Way of Life Festival 2024', year: 2024,
       status: 'closed',
       jaugeEst: 24000, caEst: 750000,
       modules: ['billetterie', 'consommation'],
     }),
     createEdition({
       id: 'edi-2025', eventId: event.id,
-      name: 'Festival Client 2025', year: 2025,
+      name: 'Way of Life Festival 2025', year: 2025,
       status: 'closed',
       jaugeEst: 20000, caEst: 600000,
       modules: ['billetterie', 'consommation', 'profil', 'invitations', 'stocks'],
     }),
     createEdition({
       id: 'edi-2026', eventId: event.id,
-      name: 'Festival Client 2026', year: 2026,
+      name: 'Way of Life Festival 2026', year: 2026,
       status: 'active',
       jaugeEst: 22000, caEst: 650000,
       modules: RECOMMENDED_MODULES.festival,
