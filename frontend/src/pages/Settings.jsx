@@ -19,19 +19,59 @@ function saveSettings(data) {
 
 // ── Calculateur de tarification ───────────────────────────────────────────────
 function PricingCalculator() {
+  const [mode, setMode]             = useState('simple')   // 'simple' | 'multi'
   const [participants, setParticipants] = useState('')
   const [selectedPack, setSelectedPack] = useState('starter')
-  const [result, setResult] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [result, setResult]         = useState(null)
+  const [loading, setLoading]       = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
+  // Multi-éditions
+  const [editions, setEditions] = useState([{ name: 'Édition 1', participants: '' }])
+
+  function addEdition()         { setEditions(e => [...e, { name: `Édition ${e.length + 1}`, participants: '' }]) }
+  function removeEdition(i)     { setEditions(e => e.filter((_, j) => j !== i)) }
+  function updateEdition(i, k, v) { setEditions(e => e.map((ed, j) => j === i ? { ...ed, [k]: v } : ed)) }
 
   async function calculate() {
-    const nb = parseInt(participants)
-    if (!nb || nb <= 0) return
-    setLoading(true)
+    setLoading(true); setResult(null)
     try {
-      const res = await fetch(`${API}/api/pricing/calculate?participants=${nb}&pack=${selectedPack}`)
-      if (res.ok) setResult(await res.json())
+      if (mode === 'simple') {
+        const nb = parseInt(participants)
+        if (!nb || nb <= 0) { setLoading(false); return }
+        const res = await fetch(`${API}/api/pricing/calculate?participants=${nb}&pack=${selectedPack}`)
+        if (res.ok) setResult(await res.json())
+      } else {
+        const eds = editions
+          .filter(e => parseInt(e.participants) > 0)
+          .map(e => ({ name: e.name, expected_participants: parseInt(e.participants) }))
+        if (!eds.length) { setLoading(false); return }
+        const res = await fetch(`${API}/api/pricing/calculate-plan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plan_type: selectedPack, editions: eds }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          // Adapter format multi pour l'affichage unifié
+          const mini = data.minimum
+          setResult({
+            pack: selectedPack,
+            pack_label: data.plan_type,
+            nb_participants: eds.reduce((s, e) => s + (e.expected_participants || 0), 0),
+            price_calculated: data.total_calculated,
+            price_minimum: mini,
+            price_final: data.price_final,
+            price_basis: data.price_basis,
+            detail_tranches: data.per_edition?.map(e => ({
+              label: e.name,
+              nb: e.participants,
+              rate: null,
+              amount: e.price_calc,
+            })) ?? [],
+            is_multi: true,
+          })
+        }
+      }
     } catch { /* ignore */ }
     setLoading(false)
   }
@@ -45,21 +85,22 @@ function PricingCalculator() {
 
   return (
     <div className="space-y-4">
-      {/* Inputs */}
+      {/* Mode + Pack */}
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
-            style={{ color: '#8B9BB4' }}>Participants</label>
-          <input
-            type="number"
-            className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none"
-            style={{ background: '#080E1E', border: '1px solid #1A2840' }}
-            placeholder="Ex : 15 000"
-            value={participants}
-            onChange={e => { setParticipants(e.target.value); setResult(null) }}
-            onFocus={e => e.target.style.borderColor = '#6366F1'}
-            onBlur={e  => e.target.style.borderColor = '#1A2840'}
-          />
+            style={{ color: '#8B9BB4' }}>Mode de calcul</label>
+          <div className="flex gap-1 p-1 rounded-lg" style={{ background: '#080E1E', border: '1px solid #1A2840' }}>
+            {[{ id: 'simple', label: '1 édition' }, { id: 'multi', label: 'Multi-éditions' }].map(m => (
+              <button key={m.id} onClick={() => { setMode(m.id); setResult(null) }}
+                className="flex-1 py-1.5 rounded text-xs font-semibold transition"
+                style={mode === m.id
+                  ? { background: 'rgba(99,102,241,0.2)', color: '#A5B4FC' }
+                  : { color: '#8B9BB4' }}>
+                {m.label}
+              </button>
+            ))}
+          </div>
         </div>
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
@@ -75,6 +116,60 @@ function PricingCalculator() {
           </select>
         </div>
       </div>
+
+      {/* Mode simple : 1 champ participants */}
+      {mode === 'simple' && (
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
+            style={{ color: '#8B9BB4' }}>Participants</label>
+          <input
+            type="number"
+            className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none"
+            style={{ background: '#080E1E', border: '1px solid #1A2840' }}
+            placeholder="Ex : 15 000"
+            value={participants}
+            onChange={e => { setParticipants(e.target.value); setResult(null) }}
+            onFocus={e => e.target.style.borderColor = '#6366F1'}
+            onBlur={e  => e.target.style.borderColor = '#1A2840'}
+          />
+        </div>
+      )}
+
+      {/* Mode multi : une ligne par édition */}
+      {mode === 'multi' && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#8B9BB4' }}>
+            Éditions et participants attendus
+          </p>
+          {editions.map((ed, i) => (
+            <div key={i} className="grid grid-cols-5 gap-2 items-center">
+              <input
+                className="col-span-2 px-2.5 py-2 rounded-lg text-xs text-white outline-none"
+                style={{ background: '#080E1E', border: '1px solid #1A2840' }}
+                placeholder="Nom édition"
+                value={ed.name}
+                onChange={e => updateEdition(i, 'name', e.target.value)}
+              />
+              <input
+                type="number"
+                className="col-span-2 px-2.5 py-2 rounded-lg text-xs text-white outline-none"
+                style={{ background: '#080E1E', border: '1px solid #1A2840' }}
+                placeholder="Participants"
+                value={ed.participants}
+                onChange={e => { updateEdition(i, 'participants', e.target.value); setResult(null) }}
+              />
+              <button onClick={() => removeEdition(i)} disabled={editions.length === 1}
+                className="py-2 rounded-lg text-xs text-[#4A5568] hover:text-[#EF4444] transition disabled:opacity-30">
+                ✕
+              </button>
+            </div>
+          ))}
+          <button onClick={addEdition}
+            className="text-xs text-[#068EEA] hover:text-[#21AAFA] transition">
+            + Ajouter une édition
+          </button>
+        </div>
+      )}
 
       <button
         onClick={calculate}
@@ -124,21 +219,24 @@ function PricingCalculator() {
             )}
           </div>
 
-          {/* Détail tranches — toggle */}
+          {/* Détail — toggle */}
           {result.detail_tranches?.length > 0 && (
             <div style={{ borderTop: '1px solid rgba(99,102,241,0.2)' }}>
               <button
                 onClick={() => setDetailOpen(!detailOpen)}
                 className="w-full flex items-center justify-between px-4 py-2.5 text-xs hover:bg-white/[0.03] transition"
                 style={{ color: '#8B9BB4' }}>
-                <span>Détail du calcul par tranche</span>
+                <span>{result.is_multi ? 'Détail par édition' : 'Détail par tranche'}</span>
                 {detailOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
               </button>
               {detailOpen && (
                 <div className="px-4 pb-4 space-y-2">
                   <div className="grid grid-cols-4 gap-2 pb-1"
                     style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                    {['Tranche', 'Participants', 'Taux', 'Montant'].map(h => (
+                    {(result.is_multi
+                      ? ['Édition', 'Participants', '', 'Montant']
+                      : ['Tranche', 'Participants', 'Taux', 'Montant']
+                    ).map(h => (
                       <p key={h} className="text-xs font-semibold uppercase tracking-wider"
                         style={{ color: '#4A5568', fontSize: '0.6rem' }}>{h}</p>
                     ))}
@@ -147,7 +245,7 @@ function PricingCalculator() {
                     <div key={i} className="grid grid-cols-4 gap-2">
                       <p className="text-xs text-[#8B9BB4]">{t.label}</p>
                       <p className="num text-xs text-white">{fmt.number(t.nb)}</p>
-                      <p className="num text-xs text-[#8B9BB4]">{t.rate.toFixed(2)} €</p>
+                      <p className="num text-xs text-[#8B9BB4]">{t.rate ? `${t.rate.toFixed(2)} €` : '—'}</p>
                       <p className="num text-xs font-semibold text-white">{fmt.currency(t.amount)}</p>
                     </div>
                   ))}
@@ -192,19 +290,50 @@ function PricingCalculator() {
   )
 }
 
+// ── Quota bar ─────────────────────────────────────────────────────────────────
+function QuotaBar({ label, used, total, color }) {
+  const unlimited = total === null || total === undefined
+  const pct = unlimited ? 0 : total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0
+  const remaining = unlimited ? null : Math.max(0, total - used)
+  const warning = !unlimited && pct >= 80
+
+  return (
+    <div className="p-3 rounded-xl" style={{ background: '#080E1E', border: `1px solid ${warning ? 'rgba(239,68,68,0.3)' : '#1A2840'}` }}>
+      <div className="flex items-center justify-between mb-1.5">
+        <p className="text-xs font-semibold text-white">{label}</p>
+        <p className="num text-xs" style={{ color: warning ? '#EF4444' : '#8B9BB4' }}>
+          {unlimited ? 'Illimité' : `${used} / ${total}`}
+        </p>
+      </div>
+      {!unlimited && (
+        <div className="h-1.5 rounded-full" style={{ background: '#1A2840' }}>
+          <div className="h-full rounded-full transition-all duration-500"
+            style={{ width: `${pct}%`, background: warning ? '#EF4444' : color }} />
+        </div>
+      )}
+      {!unlimited && (
+        <p className="text-xs mt-1" style={{ color: warning ? '#EF4444' : '#4A5568' }}>
+          {remaining === 0 ? '⚠ Quota atteint' : `${remaining} restant${remaining > 1 ? 's' : ''}`}
+        </p>
+      )}
+    </div>
+  )
+}
+
 // ── Bloc Pack actuel ──────────────────────────────────────────────────────────
 function PackCard({ pack }) {
   if (!pack) return null
 
-  const isUnlimited = v => v === null || v === undefined
-  const quotaLabel  = (v, unit) => isUnlimited(v) ? 'Illimité' : `${v} ${unit}`
-
-  const quota_color = '#21AAFA'
   const COLORS = ['#F59E0B', '#068EEA', '#10B981', '#6366F1']
+  const modules = pack.enabled_modules === 'all'
+    ? ['Tous les modules']
+    : (pack.enabled_modules ?? []).map(m => m.replace(/_/g, ' '))
+  const locked  = pack.locked_modules ?? []
+  const reports = pack.enabled_reports === 'all' ? ['Tous (9 types)'] : (pack.enabled_reports ?? [])
 
   return (
     <div className="space-y-4">
-      {/* Header pack */}
+      {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 mb-1">
@@ -214,59 +343,46 @@ function PackCard({ pack }) {
             </span>
             {pack.on_quote && (
               <span className="px-2 py-0.5 rounded-full text-xs"
-                style={{ background: 'rgba(99,102,241,0.1)', color: '#A5B4FC' }}>
-                Sur devis
-              </span>
+                style={{ background: 'rgba(99,102,241,0.1)', color: '#A5B4FC' }}>Sur devis</span>
             )}
           </div>
           <p className="text-xs text-[#8B9BB4]">{pack.tagline}</p>
         </div>
-        <p className="num text-sm font-bold flex-shrink-0"
-          style={{ color: '#F59E0B' }}>
-          {pack.min_price_ht.toLocaleString('fr-FR')} € HT min
+        <p className="num text-sm font-bold flex-shrink-0" style={{ color: '#F59E0B' }}>
+          {(pack.minimum_price ?? 0).toLocaleString('fr-FR')} € HT min
         </p>
       </div>
 
-      {/* Quotas */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
-        {[
-          { label: 'Événements',  val: quotaLabel(pack.quota_events,   '')    },
-          { label: 'Éditions',    val: quotaLabel(pack.quota_editions,  '')    },
-          { label: 'Rapports IA', val: quotaLabel(pack.quota_ai_reports,'')    },
-          { label: 'Utilisateurs',val: quotaLabel(pack.quota_users,    '')     },
-        ].map((q, i) => (
-          <div key={q.label} className="p-2.5 rounded-xl text-center"
-            style={{ background: `${COLORS[i]}10`, border: `1px solid ${COLORS[i]}25` }}>
-            <p className="num text-sm font-bold" style={{ color: COLORS[i] }}>{q.val}</p>
-            <p className="text-xs mt-0.5" style={{ color: '#8B9BB4' }}>{q.label}</p>
-          </div>
-        ))}
+      {/* Quotas avec usage */}
+      <div className="grid grid-cols-2 xl:grid-cols-3 gap-2">
+        <QuotaBar label="Événements"   used={pack.used_events ?? 0}          total={pack.included_events}          color={COLORS[0]} />
+        <QuotaBar label="Éditions"     used={pack.used_active_editions ?? 0}  total={pack.included_active_editions}  color={COLORS[1]} />
+        <QuotaBar label="Rapports IA"  used={pack.used_ai_reports ?? 0}       total={pack.included_ai_reports}       color={COLORS[2]} />
       </div>
 
-      {/* Modules inclus + verrouillés */}
+      {/* Modules inclus / verrouillés */}
       <div className="grid xl:grid-cols-2 gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider mb-2"
             style={{ color: '#8B9BB4', fontSize: '0.6rem' }}>Modules inclus</p>
           <div className="flex flex-wrap gap-1.5">
-            {(pack.modules === 'all' ? ['Tous'] : pack.modules).map(m => (
+            {modules.map(m => (
               <span key={m} className="px-2 py-0.5 rounded-full text-xs font-semibold capitalize"
                 style={{ background: 'rgba(16,185,129,0.1)', color: '#10B981', border: '1px solid rgba(16,185,129,0.2)' }}>
-                {m.replace('_', ' ')}
+                {m}
               </span>
             ))}
           </div>
         </div>
-        {pack.modules_locked?.length > 0 && (
+        {locked.length > 0 && (
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider mb-2"
               style={{ color: '#8B9BB4', fontSize: '0.6rem' }}>Modules verrouillés</p>
             <div className="flex flex-wrap gap-1.5">
-              {pack.modules_locked.map(m => (
+              {locked.map(m => (
                 <span key={m} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs capitalize"
                   style={{ background: 'rgba(74,85,104,0.15)', color: '#4A5568', border: '1px solid #1A2840' }}>
-                  <Lock size={9} strokeWidth={2} />
-                  {m.replace('_', ' ')}
+                  <Lock size={9} strokeWidth={2} />{m.replace(/_/g, ' ')}
                 </span>
               ))}
             </div>
@@ -274,11 +390,25 @@ function PackCard({ pack }) {
         )}
       </div>
 
-      {/* Fonctionnalités incluses */}
+      {/* Rapports IA inclus */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider mb-2"
+          style={{ color: '#8B9BB4', fontSize: '0.6rem' }}>Rapports IA inclus</p>
+        <div className="flex flex-wrap gap-1.5">
+          {reports.map(r => (
+            <span key={r} className="px-2 py-0.5 rounded-full text-xs"
+              style={{ background: 'rgba(99,102,241,0.1)', color: '#A5B4FC', border: '1px solid rgba(99,102,241,0.2)' }}>
+              {r.replace(/_/g, ' ')}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Fonctionnalités */}
       {pack.features?.length > 0 && (
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider mb-2"
-            style={{ color: '#8B9BB4', fontSize: '0.6rem' }}>Ce qui est inclus</p>
+            style={{ color: '#8B9BB4', fontSize: '0.6rem' }}>Inclus dans ce pack</p>
           <div className="grid xl:grid-cols-2 gap-1.5">
             {pack.features.map(f => (
               <div key={f} className="flex items-start gap-2">
@@ -290,40 +420,20 @@ function PackCard({ pack }) {
         </div>
       )}
 
-      {/* Non inclus */}
-      {pack.not_included?.length > 0 && (
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider mb-2"
-            style={{ color: '#8B9BB4', fontSize: '0.6rem' }}>Non inclus dans ce pack</p>
-          <div className="flex flex-wrap gap-1.5">
-            {pack.not_included.map(f => (
-              <span key={f} className="px-2 py-0.5 rounded-full text-xs"
-                style={{ background: 'rgba(239,68,68,0.07)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.15)' }}>
-                — {f}
-              </span>
-            ))}
+      {/* Infos statut */}
+      <div className="grid grid-cols-2 gap-2 pt-1" style={{ borderTop: '1px solid #1A2840' }}>
+        {[
+          { label: 'Statut abonnement', val: pack.subscription_status ?? 'active' },
+          { label: 'Statut paiement',   val: pack.payment_status ?? 'paid' },
+        ].map(({ label, val }) => (
+          <div key={label} className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+              style={{ background: val === 'active' || val === 'paid' ? '#10B981' : '#EF4444' }} />
+            <p className="text-xs text-[#8B9BB4]">{label}</p>
+            <p className="text-xs font-semibold text-white ml-auto capitalize">{val}</p>
           </div>
-        </div>
-      )}
-
-      {/* Extensions disponibles */}
-      {pack.extensions_resolved?.length > 0 && (
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider mb-2"
-            style={{ color: '#8B9BB4', fontSize: '0.6rem' }}>Extensions disponibles (à la carte)</p>
-          <div className="grid xl:grid-cols-2 gap-2">
-            {pack.extensions_resolved.map(ext => (
-              <div key={ext.label} className="flex items-center justify-between p-2.5 rounded-xl"
-                style={{ background: 'rgba(6,142,234,0.05)', border: '1px solid rgba(6,142,234,0.15)' }}>
-                <p className="text-xs text-[#8B9BB4]">{ext.label}</p>
-                <p className="num text-xs font-semibold text-white flex-shrink-0 ml-2">
-                  {ext.price_ht ? `${ext.price_ht} € HT` : ext.price_pct ? `+${ext.price_pct}%` : '—'}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        ))}
+      </div>
     </div>
   )
 }

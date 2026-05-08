@@ -163,6 +163,24 @@ def init_db():
             updated_at            TEXT NOT NULL
         );
 
+        -- Configuration client (1 ligne par instance)
+        CREATE TABLE IF NOT EXISTS client_config (
+            id                     TEXT PRIMARY KEY DEFAULT 'singleton',
+            client_name            TEXT,
+            client_slug            TEXT,
+            plan_type              TEXT DEFAULT 'starter',
+            deployment_mode        TEXT DEFAULT 'hosted_dedicated',
+            billing_mode           TEXT DEFAULT 'manual_invoice',
+            subscription_status    TEXT DEFAULT 'active',
+            payment_status         TEXT DEFAULT 'paid',
+            used_events            INTEGER DEFAULT 0,
+            used_active_editions   INTEGER DEFAULT 0,
+            used_ai_reports        INTEGER DEFAULT 0,
+            extensions_json        TEXT,
+            created_at             TEXT,
+            updated_at             TEXT
+        );
+
         """)
 
     # ── Migrations safe (colonnes ajoutées après la création initiale) ──────────
@@ -815,3 +833,69 @@ def delete_channel(channel_id: str):
             "UPDATE channels SET active = 0 WHERE id = ?",
             (channel_id,)
         )
+
+
+# ── Configuration client ───────────────────────────────────────────────────────
+
+def get_client_config() -> dict | None:
+    """Retourne la configuration client stockée, ou None si non configurée."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM client_config WHERE id = 'singleton'"
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def save_client_config(cfg: dict) -> dict:
+    """Crée ou met à jour la configuration client (upsert)."""
+    now = datetime.utcnow().isoformat()
+    with get_db() as conn:
+        conn.execute("""
+            INSERT INTO client_config
+              (id, client_name, client_slug, plan_type, deployment_mode,
+               billing_mode, subscription_status, payment_status,
+               used_events, used_active_editions, used_ai_reports,
+               extensions_json, created_at, updated_at)
+            VALUES ('singleton',?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(id) DO UPDATE SET
+              client_name          = excluded.client_name,
+              client_slug          = excluded.client_slug,
+              plan_type            = excluded.plan_type,
+              deployment_mode      = excluded.deployment_mode,
+              billing_mode         = excluded.billing_mode,
+              subscription_status  = excluded.subscription_status,
+              payment_status       = excluded.payment_status,
+              used_events          = excluded.used_events,
+              used_active_editions = excluded.used_active_editions,
+              used_ai_reports      = excluded.used_ai_reports,
+              extensions_json      = excluded.extensions_json,
+              updated_at           = excluded.updated_at
+        """, (
+            cfg.get('client_name', ''),
+            cfg.get('client_slug', ''),
+            cfg.get('plan_type', 'starter'),
+            cfg.get('deployment_mode', 'hosted_dedicated'),
+            cfg.get('billing_mode', 'manual_invoice'),
+            cfg.get('subscription_status', 'active'),
+            cfg.get('payment_status', 'paid'),
+            cfg.get('used_events', 0),
+            cfg.get('used_active_editions', 0),
+            cfg.get('used_ai_reports', 0),
+            json.dumps(cfg.get('extensions', {}), ensure_ascii=False),
+            now, now,
+        ))
+    return get_client_config()
+
+
+def increment_usage(field: str, amount: int = 1):
+    """Incrémente un compteur d'usage (used_events, used_ai_reports, etc.)."""
+    allowed = {'used_events', 'used_active_editions', 'used_ai_reports'}
+    if field not in allowed:
+        return
+    with get_db() as conn:
+        conn.execute(f"""
+            INSERT INTO client_config (id, {field}, created_at, updated_at)
+            VALUES ('singleton', ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET {field} = {field} + ?,
+            updated_at = excluded.updated_at
+        """, (amount, datetime.utcnow().isoformat(), datetime.utcnow().isoformat(), amount))

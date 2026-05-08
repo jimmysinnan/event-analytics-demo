@@ -14,8 +14,13 @@ import uuid
 from datetime import datetime
 from services.kpi_engine import kpi_conso, kpi_billetterie, ca_horaire, profil_client
 from services.pricing_engine import (
-    PACKS, EXTENSIONS, get_pack, calculate_pack_price, pack_info,
-    calculate_price as calc_price_tranches,
+    EXTENSIONS, PRICING_TIERS,
+    apply_plan_configuration,
+    build_client_config,
+    calculate_participant_based_price,
+    calculate_plan_price,
+    calculate_price_detail,
+    get_plan_minimum,
 )
 from services.ai_reporter import generate_ai_report_stream
 from services.pdf_generator import generate_global, generate_pdv, generate_profil
@@ -28,6 +33,7 @@ from database import (
     save_channel, get_channels, delete_channel,
     get_all_edition_analytics, upsert_edition_analytics,
     save_conso_state, get_conso_state,
+    get_client_config, save_client_config, increment_usage,
 )
 
 # ── Variables d'environnement ─────────────────────────────────────────────────
@@ -152,39 +158,112 @@ def health():
 @app.get("/api/pack")
 def get_pack_info():
     """
-    Retourne les informations du pack actif de cette instance.
-    Pack lu depuis PACK_TYPE dans le .env client (défaut : starter).
+    Retourne la configuration complète du pack actif.
+    Priorité : table client_config > PACK_TYPE .env > 'starter' (défaut).
     """
-    pack_id = os.environ.get('PACK_TYPE', 'starter').strip().lower()
-    return JSONResponse(content=jsonify(pack_info(pack_id)))
+    db_cfg  = get_client_config()
+    plan_id = (db_cfg or {}).get('plan_type') or os.environ.get('PACK_TYPE', 'starter')
+    plan    = apply_plan_configuration(plan_id)
+
+    # Fusionner avec les données DB (usage réel)
+    used = {
+        'used_events':           (db_cfg or {}).get('used_events',           0),
+        'used_active_editions':  (db_cfg or {}).get('used_active_editions',  0),
+        'used_ai_reports':       (db_cfg or {}).get('used_ai_reports',       0),
+    }
+
+    # Résoudre extensions
+    exts_ids = plan.get('features', [])   # pour compat — utiliser le plan complet
+    return JSONResponse(content=jsonify({
+        **plan,
+        **used,
+        'client_name':        (db_cfg or {}).get('client_name', _APP_NAME),
+        'client_slug':        (db_cfg or {}).get('client_slug', _CLIENT_SLUG),
+        'subscription_status':(db_cfg or {}).get('subscription_status', 'active'),
+        'payment_status':     (db_cfg or {}).get('payment_status', 'paid'),
+        'pricing_tiers':      PRICING_TIERS,
+    }))
+
+
+@app.get("/api/client-config")
+def read_client_config():
+    """Retourne la configuration client complète (admin)."""
+    db_cfg  = get_client_config()
+    plan_id = (db_cfg or {}).get('plan_type') or os.environ.get('PACK_TYPE', 'starter')
+    return JSONResponse(content=jsonify(
+        build_client_config(
+            client_name = (db_cfg or {}).get('client_name', _APP_NAME),
+            client_slug = (db_cfg or {}).get('client_slug', _CLIENT_SLUG),
+            plan_type   = plan_id,
+            used_events           = (db_cfg or {}).get('used_events', 0),
+            used_active_editions  = (db_cfg or {}).get('used_active_editions', 0),
+            used_ai_reports       = (db_cfg or {}).get('used_ai_reports', 0),
+            subscription_status   = (db_cfg or {}).get('subscription_status', 'active'),
+            payment_status        = (db_cfg or {}).get('payment_status', 'paid'),
+        )
+    ))
+
+
+@app.put("/api/client-config")
+async def update_client_config(request: Request):
+    """
+    Met à jour la configuration client (activation manuelle par l'opérateur).
+    Aucun paiement déclenché — activation par virement bancaire + validation manuelle.
+    """
+    body = await request.json()
+    cfg  = save_client_config(body)
+    return JSONResponse(content=jsonify(cfg))
 
 
 @app.get("/api/pricing/calculate")
 def pricing_calculate(participants: int = 0, pack: str = 'starter'):
     """
-    Calcule le prix HT indicatif pour un pack et un nombre de participants.
-    Utilisé par le calculateur commercial — aucun paiement déclenché.
+    Calcule le prix HT indicatif.
+    Outil commercial uniquement — aucun paiement déclenché.
     """
     if participants < 0:
         raise HTTPException(400, "Le nombre de participants doit être positif.")
-    result = calculate_pack_price(pack, participants)
+    calc  = calculate_price_detail(participants)
+    mini  = get_plan_minimum(pack)
+    final = max(calc['total_ht'], float(mini))
+    plan  = apply_plan_configuration(pack)
+    return JSONResponse(content=jsonify({
+        'pack':             plan['id'],
+        'pack_label':       plan['label'],
+        'nb_participants':  participants,
+        'price_calculated': calc['total_ht'],
+        'price_minimum':    mini,
+        'price_final':      round(final, 2),
+        'price_basis':      'minimum' if calc['total_ht'] < mini else 'participants',
+        'detail_tranches':  calc['detail'],
+        'pricing_tiers':    PRICING_TIERS,
+    }))
+
+
+@app.post("/api/pricing/calculate-plan")
+async def pricing_calculate_plan(request: Request):
+    """
+    Calcule le prix d'un plan en tenant compte de plusieurs éditions.
+    Body : { plan_type: str, editions: [{name, expected_participants}] }
+    """
+    body      = await request.json()
+    plan_type = body.get('plan_type', 'starter')
+    editions  = body.get('editions', [])
+    result    = calculate_plan_price(plan_type, editions)
     return JSONResponse(content=jsonify(result))
 
 
 @app.get("/api/pricing/packs")
 def list_packs():
-    """Retourne la liste de tous les packs avec leurs caractéristiques."""
-    return JSONResponse(content=jsonify({
-        k: {
-            'id':           v['id'],
-            'label':        v['label'],
-            'tagline':      v['tagline'],
-            'min_price_ht': v['min_price_ht'],
-            'features':     v['features'],
-            'on_quote':     v.get('on_quote', False),
-        }
-        for k, v in PACKS.items()
-    }))
+    """Retourne la liste de tous les packs."""
+    plans = ['pilot', 'starter', 'season', 'premium']
+    return JSONResponse(content=jsonify([
+        {k: v for k, v in apply_plan_configuration(p).items()
+         if k in ('id', 'label', 'tagline', 'minimum_price', 'features',
+                  'included_events', 'included_active_editions', 'included_ai_reports',
+                  'on_quote', 'support')}
+        for p in plans
+    ]))
 
 
 @app.get("/api/import/formats")
