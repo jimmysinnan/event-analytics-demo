@@ -270,6 +270,15 @@ server {
         proxy_set_header Host \$host;
     }
 
+    # Console admin opérateur — protégée par credentials SÉPARÉS du client
+    # Fichier : ${CLIENT_DIR}/.htpasswd-admin (créé par setup-admin-auth.sh)
+    # Le client connaît son .htpasswd mais PAS le .htpasswd-admin
+    location /admin {
+        auth_basic "Event Analytics Admin";
+        auth_basic_user_file ${CLIENT_DIR}/.htpasswd-admin;
+        try_files \$uri \$uri/ /index.html;
+    }
+
     location / {
         try_files \$uri \$uri/ /index.html;
     }
